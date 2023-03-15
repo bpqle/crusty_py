@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "crusty-py"
+version = "0.1.0"
+description = "Client-side libraries and operant experiement scripts for decide-rs"
+authors = ["Bao Le <uac6qw@virginia.edu>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.24.2"
+pandas = "^1.5.3"
+zmq = "^0.0.0"
+asyncio = "^3.4.3"
+protobuf = "^4.22.1"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
