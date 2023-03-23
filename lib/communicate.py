@@ -1,8 +1,10 @@
+import socket
 import sys
 sys.path.insert(0, '')
 import zmq
 import asyncio
 import zmq.asyncio
+import logging
 
 import protos.house_light_pb2 as hl_proto
 
@@ -20,3 +22,11 @@ async def recv_and_process():
     msg.ParseFromString(encoded_msg)
     reply = msg.SerializeToString()
     await sock.send_multipart(reply)
+
+async def comp_subscribe():
+    sock = ctx.socket(zmq.SUBSCRIBE)
+    sock.subscribe("")
+    sock.bind(PUB_ENDPOINT)
+    logging.info("Begin subscription for component state changes")
+    while True:
+        encoded_msg = sock.recv_string()

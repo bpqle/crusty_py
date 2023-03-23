@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 message State {
-  bool switch = 1;
+  bool manual = 1;
   bool ephemera = 2;
   int32 brightness = 3;
   bool daytime = 4;

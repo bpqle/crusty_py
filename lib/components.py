@@ -7,13 +7,13 @@ import asyncio
 
 class HouseLight:
     def __init__(self):
-        self.switch = True
+        self.manual = True
         self.brightness = 0
         self.ephemera = False
         self.daytime = False
     def startup_ephemera(self):
         self.ephemera = False
-        self.switch = False
+        self.manual = False
 
 class PeckBoard:
     def __init__(self):
