@@ -20,8 +20,8 @@ async def decide_poll(components=None):
         subsock.subscribe("")
     else:
         for c in components:
-            topic = bytes("state/", c)
-            subsock.subscribe("state/"+c)
+            topic = f"state/{c}"
+            subsock.subscribe(bytes(topic))
     subsock.bind(PUB_ENDPOINT)
     logging.info(f"Sub Socket Created for {components}.")
     while True:
