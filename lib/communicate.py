@@ -35,23 +35,15 @@ async def decide_poll(components=None):
         print(state)
 
 
-class ComponentRequest(Enum):
+class RequestType(Enum):
     ChangeState = 0x00
     ResetState = 0x01
     SetParameters = 0x02
     GetParameters = 0x12
     ComponentShutdown = 0x13
-
-
-class GeneralRequest(Enum):
     RequestLock = 0x20
     ReleaseLock = 0x21
     Shutdown = 0x22
-
-
-class RequestType(Enum):
-    Component = ComponentRequest
-    General = GeneralRequest
 
 
 def req_from_mtp(multi_msg: list[bytes]):
@@ -60,17 +52,17 @@ def req_from_mtp(multi_msg: list[bytes]):
     version = multi_msg.pop(0)
     if version != DECIDE_VERSION:
         logging.warning("Different Version of Decide Message Received")
-    req_type = RequestType(multi_msg.pop(0)[0])
+    reqtype_int = multi_msg.pop(0)[0]
     body = multi_msg.pop(0)
     component = None
-    if req_type == RequestType.General:
+    if reqtype_int > 30:  # General Request
         component = None
-    elif req_type == RequestType.Component:
+    elif reqtype_int < 30:  # Component Request
         component = str(multi_msg.pop(0))
     else:
         logging.error("Invalid Request Type Found")
 
-    return Request(req_type, component, body)
+    return Request(RequestType(reqtype_int).name, component, body)
 
 
 class Request:
@@ -78,13 +70,13 @@ class Request:
     component = None
     body = None
 
-    def __init__(self, req_type: RequestType, component=None, body=None):
-        self.request_type: req_type
+    def __init__(self, request_type: str, component=None, body=None):
+        self.request_type: RequestType[request_type].value
         self.component: component
         self.body: body
 
     async def send(self):
-        multi_msg = [DECIDE_VERSION, self.request_type.value, self.request_type.body]
+        multi_msg = [DECIDE_VERSION, self.request_type, self.body]
         if self.component is not None:
             multi_msg.append(self.component.encode('utf-8'))
         ctx = zmq.asyncio.Context()

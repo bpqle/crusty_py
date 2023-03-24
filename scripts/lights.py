@@ -8,7 +8,7 @@ import lib.house_light as hl_proto
 import lib.peckboard as pb_proto
 import lib.sound_alsa as sa_proto
 import lib.stepper_motor as sm_proto
-from lib.communicate import Request, RequestType, req_from_mtp, decide_poll
+from lib.communicate import Request, req_from_mtp, decide_poll
 
 import zmq
 import asyncio
@@ -30,12 +30,12 @@ components = ['house-light', 'stepper-motor',
 async def paramelize():
     hl_param = hl_proto.HlParams(clock_interval=300)
     sm_param = sm_proto.SmParams(timeout=4000)
-    req1 = Request(RequestType.Component.value.SetParameters,
+    req1 = Request(request_type='SetParameters',
                    component=b'house-light',
                    body=hl_param.__bytes__())
     reply1 = await req1.send()
     print(reply1)
-    req2 = Request(RequestType.Component.value.SetParameters,
+    req2 = Request(request_type='SetParameters',
                    component=b'stepper-motor',
                    body=bytes(sm_param))
     reply2 = await req2.send()
