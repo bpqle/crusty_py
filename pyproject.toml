@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "crusty-py"
+name = "py-crust"
 version = "0.1.0"
 description = "Client-side libraries and operant experiement scripts for decide-rs"
 authors = ["Bao Le <uac6qw@virginia.edu>"]
@@ -9,7 +9,7 @@ readme = "README.md"
 python = "^3.10"
 numpy = "^1.24.2"
 pandas = "^1.5.3"
-zmq = "^25.0.1"
+zmq = "^0.0.0"
 asyncio = "^3.4.3"
 protobuf = "^4.22.1"
 betterproto = {extras = ["compiler"], version = "^1.2.5"}
@@ -20,4 +20,4 @@ jupyter = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"s
+build-backend = "poetry.core.masonry.api"

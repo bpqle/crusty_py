@@ -31,11 +31,11 @@ async def paramelize():
     hl_param = hl_proto.HlParams(clock_interval=300)
     sm_param = sm_proto.SmParams(timeout=4000)
     reply1 = Request(RequestType.Component.value.SetParameters,
-                     component=['house-light'],
+                     component=b'house-light',
                      body=bytes(hl_param)).send()
     print(reply1)
     reply2 = Request(RequestType.Component.value.SetParameters,
-                     components=['stepper-motor'],
+                     component=b'stepper-motor',
                      body=bytes(sm_param)).send()
     print(reply2)
 
