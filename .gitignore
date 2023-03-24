@@ -1,3 +1,5 @@
 .idea/
 .venv/
 poetry.lock
+lib/__pycache__/
+protos/__pycache__/

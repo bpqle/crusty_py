@@ -11,13 +11,13 @@ You can download a pre-compiled `protoc` and place the files in the respective l
 usually
 All proto files can be compiled at once using
 ```
-protoc -I=./protos --python_out=./protos ./*.proto
+protoc -I ./protos --python_betterproto_out=../lib ./protos.proto
 ```
-
-However, compiler will fail if there are identically named objects in different .proto files being compiled simultaneously.
-You can either change the `State` and `Param` in each proto file to a unique name, or compile each file individually:
-```
-protoc -I=./protos --python_out=./protos house_light.proto
+Note that we are using betterproto to avoid Google's plugin of protobuf, which only compiles the proto classes at runtime and has many other disadvantages.
+To install betterproto with `pip` you will need both the compiler and the library:
+```agsl
+pip install "betterproto[compiler]"
+pip install betterproto
 ```
 
 
