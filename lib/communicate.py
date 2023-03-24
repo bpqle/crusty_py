@@ -15,7 +15,7 @@ DECIDE_VERSION = b"DCDC01"
 
 async def decide_poll(components=None):
     ctx = zmq.asyncio.Context()
-    subsock = ctx.socket(zmq.SUBSCRIBE)
+    subsock = ctx.socket(zmq.SUB)
     if components is None:
         subsock.subscribe("")
     else:
