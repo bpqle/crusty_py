@@ -22,9 +22,10 @@ async def decide_poll(components=None):
         for c in components:
             topic = f"state/{c}"
             subsock.subscribe(topic.encode('utf-8'))
-    subsock.bind(PUB_ENDPOINT)
+    subsock.connect(PUB_ENDPOINT)
     logging.info(f"Sub Socket Created for {components}.")
-    while True:
+
+    while 1:
         multipart = await subsock.recv_multipart()
         *topic, msg = multipart
         state, comp = topic.split("/")
@@ -66,22 +67,19 @@ def req_from_mtp(multi_msg: list[bytes]):
 
 
 class Request:
-    request_type = None
-    component = None
-    body = None
 
     def __init__(self, request_type: str, component=None, body=None):
-        self.request_type: RequestType[request_type].value
-        self.component: component
-        self.body: body
+        self.request_type = RequestType[request_type].value.to_bytes(2, 'big')
+        self.component = component
+        self.body = body
 
     async def send(self):
         multi_msg = [DECIDE_VERSION, self.request_type, self.body]
         if self.component is not None:
-            multi_msg.append(self.component.encode('utf-8'))
+            multi_msg.append(self.component)
         ctx = zmq.asyncio.Context()
         req_sock = ctx.socket(zmq.REQ)
-        req_sock.bind(REQ_ENDPOINT)
+        req_sock.connect(REQ_ENDPOINT)
         logging.info("Request Socket created, sending msg")
         await req_sock.send(multi_msg)
         reply = await req_sock.recv()
