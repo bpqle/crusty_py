@@ -81,8 +81,8 @@ class Request:
         req_sock = ctx.socket(zmq.REQ)
         req_sock.connect(REQ_ENDPOINT)
         logging.info("Request Socket created, sending msg")
-        await req_sock.send(multi_msg)
-        reply = await req_sock.recv()
+        await req_sock.send_multipart(multi_msg)
+        reply = await req_sock.recv_multipart()
 
         return reply
 
