@@ -25,16 +25,16 @@ async def paramelize():
     req_body = {
         'clock_interval': 300
     }
-    req = Request('SetParameters', b'house-light', req_body)
+    req = Request('SetParameters', 'house-light', req_body)
     rep = await req.send()
-    print(rep)
+    print("here is reply:", rep)
 
     req_body = {
         'timeout': 2000
     }
-    req = Request('SetParameters', b'stepper-motor', req_body)
+    req = Request('SetParameters', 'stepper-motor', req_body)
     rep = await req.send()
-    print(rep)
+    print("here is reply:", rep)
 
 
 async def lightsup(brightness):
@@ -46,16 +46,16 @@ async def lightsup(brightness):
         'daytime': True,
     }
     req = Request(request_type="ChangeState",
-                  component=b'house-light',
+                  component='house-light',
                   body=hl_state)
     rep = await req.send()
-    print(rep)
+    print("here is reply:", rep)
 
 
 async def main():
     logging.info("lights.py initiated, connecting to decide-core.")
-    asyncio.create_task(paramelize())
     poller = asyncio.create_task(decide_poll(components))
+    await asyncio.create_task(paramelize())
     await lightsup(20)
     await asyncio.sleep(4)
     await lightsup(20)

@@ -31,7 +31,7 @@ async def decide_poll(components=None):
             if component not in components:
                 print(f"Received published event of unsubscribed component")
             else:
-                tstamp, state_msg = Components("state", component).parse_any(msg)
+                tstamp, state_msg = Components("state", component).from_pub(msg)
                 print(tstamp)
                 print(state_msg)
         else:
@@ -70,16 +70,16 @@ def req_from_mtp(multi_msg: list[bytes]):
 
 class Request:
 
-    def __init__(self, request_type: str, component=None, body=None):
+    def __init__(self, request_type: str, component: str, body=None):
         if request_type == "SetParameters":
-            body_encode = Components('param', component, data=body).to_any()
+            body_encode = Components('param', component, data=body).to_req()
         elif request_type == "ChangeState":
-            body_encode = Components('param', component, data=body).to_any()
+            body_encode = Components('state', component, data=body).to_req()
         else:
             print("Nonsense Request")
             body_encode = _any.Any()
         self.request_type = RequestType[request_type].value.to_bytes(2, 'little')
-        self.component = component
+        self.component = component.encode('utf-8')
         self.body = body_encode.SerializeToString()
 
     async def send(self):
