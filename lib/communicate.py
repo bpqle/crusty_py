@@ -1,13 +1,9 @@
 import zmq
-import asyncio
 import zmq.asyncio
 import logging
 from enum import Enum
-import lib.house_light as hl_proto
-import lib.peckboard as pb_proto
-import lib.sound_alsa as sa_proto
-import lib.stepper_motor as sm_proto
-
+from components import Components
+import google.protobuf.any_pb2 as _any
 REQ_ENDPOINT = "tcp://127.0.0.1:7897"
 PUB_ENDPOINT = "tcp://127.0.0.1:7898"
 DECIDE_VERSION = b"DCDC01"
@@ -28,12 +24,18 @@ async def decide_poll(components=None):
     while 1:
         multipart = await subsock.recv_multipart()
         *topic, msg = multipart
-        state, comp = topic.split("/")
-        print(f"Received Published Event of component {comp}")
-        if comp not in components:
-            logging.error(f"Received published event of unsubscribed component")
-        state = parse_from_pub(comp, msg)
-        print(state)
+        topic = topic[0].decode("utf-8")
+        print(f"Received Pub Event of topic {topic}")
+        if "/" in topic:
+            _state, component = topic.split("/")
+            if component not in components:
+                print(f"Received published event of unsubscribed component")
+            else:
+                tstamp, state_msg = Components("state", component).parse_any(msg)
+                print(tstamp)
+                print(state_msg)
+        else:
+            print(f"incomprehensible topic {topic}")
 
 
 class RequestType(Enum):
@@ -69,9 +71,16 @@ def req_from_mtp(multi_msg: list[bytes]):
 class Request:
 
     def __init__(self, request_type: str, component=None, body=None):
-        self.request_type = RequestType[request_type].value.to_bytes(2, 'big')
+        if request_type == "SetParameters":
+            body_encode = Components('param', component, data=body).to_any()
+        elif request_type == "ChangeState":
+            body_encode = Components('param', component, data=body).to_any()
+        else:
+            print("Nonsense Request")
+            body_encode = _any.Any()
+        self.request_type = RequestType[request_type].value.to_bytes(2, 'little')
         self.component = component
-        self.body = body
+        self.body = body_encode.SerializeToString()
 
     async def send(self):
         multi_msg = [DECIDE_VERSION, self.request_type, self.body]
@@ -82,23 +91,8 @@ class Request:
         req_sock.connect(REQ_ENDPOINT)
         logging.info("Request Socket created, sending msg")
         await req_sock.send_multipart(multi_msg)
-        reply = await req_sock.recv_multipart()
-
-        return reply
-
-
-def parse_from_pub(component, msg: bytes):
-    if component == 'house-light':
-        state = hl_proto.HlState.parse(data=msg)
-    elif component == 'peck-led':
-        state = pb_proto.LedState.parse(data=msg)
-    elif component == 'peck-key':
-        state = pb_proto.KeyState.parse(data=msg)
-    elif component == 'stepper-motor':
-        state = sm_proto.SmState.parse(data=msg)
-    elif component == 'sound-alsa':
-        state = sa_proto.SaState.parse(data=msg)
-    else:
-        logging.error(f"Unknown component {component}")
-        state = None
-    return state
+        *dc, reply = await req_sock.recv_multipart()
+        if dc[0] != DECIDE_VERSION:
+            print("Mismatch Version of DECIDE-RS")
+        else:
+            return reply
