@@ -15,6 +15,7 @@ protobuf = "^4.22.1"
 betterproto = {extras = ["compiler"], version = "^1.2.5"}
 grpcio-tools = "^1.51.3"
 pyzmq = "^25.0.2"
+aiologger = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"

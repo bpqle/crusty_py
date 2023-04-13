@@ -11,13 +11,10 @@ You can download a pre-compiled `protoc` and place the files in the respective l
 usually
 All proto files can be compiled at once using
 ```
-protoc -I ./protos --python_betterproto_out=../lib ./protos.proto
+ protoc -I ./protos --python_out=./lib ./protos/*.proto --pyi_out=./protos
 ```
-Note that we are using betterproto to avoid Google's plugin of protobuf, which only compiles the proto classes at runtime and has many other disadvantages.
-To install betterproto with `pip` you will need both the compiler and the library:
-```agsl
-pip install "betterproto[compiler]"
-pip install betterproto
-```
+
+Generated python descriptors of protobuf message types located in `lib` can be imported, but the python classes themselves will not be generated until runtime. This means that development with an IDE will not be able to reference the classes and methods dynamically.
+In order to do so, we enable generation of corresponding `.pyi` files that can be used to check your code. Import them as you would the `.py` files. 
 
 

@@ -4,8 +4,9 @@ import peckboard_pb2 as pb_pb
 import sound_alsa_pb2 as sa_pb
 import stepper_motor_pb2 as sm_pb
 import google.protobuf.any_pb2 as _any
-
 import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Components:
@@ -23,15 +24,19 @@ class Components:
         elif component == "sound-alsa":
             self.component = self.SoundAlsa(meta_type, data)
         else:
-            print(f"Error: Unrecognized Component {component}")
+            logger.error(f"Unrecognized/Unspecified Component Name {component}")
 
     def from_any(self, any_msg: _any.Any):
-        decoded_msg = self.component.from_any(any_msg)
-        return decoded_msg
+        any_msg.Unpack(self.component.data.pb_obj)
+        logger.debug(f"Parsed pb_Any for {self.meta_type} of {self.name}")
+        return self.component.data.pb_obj
 
     def to_any(self):
-        encoded_msg = self.component.to_any()
-        return encoded_msg
+        any_msg = _any.Any()
+        any_msg.Pack(self.component.data.pb_obj)
+        any_msg.type_url = self.component.type_url
+        logger.debug(f"Packed pb_Any from {self.meta_type} of {self.name}")
+        return any_msg
 
     def from_pub(self, msg):
         pub_msg = dc_pb.Pub()
@@ -39,20 +44,22 @@ class Components:
         any_state = _any.Any()
         any_state.CopyFrom(pub_msg.state)
         state_msg = self.from_any(any_state)
+        logger.debug(f"Pub State Message parsed to {self.name}")
         return pub_msg.time, state_msg
 
     def to_req(self):
         if self.meta_type == 'state':
             req_msg = dc_pb.StateChange()
             req_msg.state.CopyFrom(self.to_any())
+            logger.debug(f"State request formed from {self.name}")
             return req_msg
         elif self.meta_type == 'param':
             req_msg = dc_pb.ComponentParams()
-            print(type(req_msg.parameters))
             req_msg.parameters.CopyFrom(self.to_any())
+            logger.debug(f"Params request formed from {self.name}")
             return req_msg
         else:
-            print(f"Error: invalid meta-type {self.meta_type} for Component request to be formed")
+            logger.error(f"Invalid meta-type {self.meta_type} for Component request to be formed")
 
     class HouseLight:
         class State:
@@ -84,16 +91,6 @@ class Components:
                 else:
                     self.data = self.Param(**data)
 
-        def from_any(self, any_msg):
-            any_msg.Unpack(self.data.pb_obj)
-            return self.data.pb_obj
-
-        def to_any(self):
-            any_msg = _any.Any()
-            any_msg.Pack(self.data.pb_obj)
-            any_msg.type_url = self.type_url
-            return any_msg
-
     class PeckKeys:
         class State:
             def __init__(self, peck_left=False, peck_center=False, peck_right=False):
@@ -118,15 +115,6 @@ class Components:
                 self.type_url = "melizalab.org/proto/key_params"
                 self.data = self.Param()
 
-        def from_any(self, any_msg):
-            any_msg.Unpack(self.data.pb_obj)
-            return self.data.pb_obj
-
-        def to_any(self):
-            any_msg = _any.Any()
-            any_msg.Pack(self.data.pb_obj)
-            any_msg.type_url = self.type_url
-            return any_msg
 
     class PeckLed:
         class State:
@@ -149,16 +137,6 @@ class Components:
             elif meta_type == "param":
                 self.type_url = "melizalab.org/proto/led_params"
                 self.data = self.Param()
-
-        def from_any(self, any_msg):
-            any_msg.Unpack(self.data.pb_obj)
-            return self.data.pb_obj
-
-        def to_any(self):
-            any_msg = _any.Any()
-            any_msg.Pack(self.data.pb_obj)
-            any_msg.type_url = self.type_url
-            return any_msg
 
     class SoundAlsa:
         class State:
@@ -189,16 +167,6 @@ class Components:
                 else:
                     self.data = self.Param(**data)
 
-        def from_any(self, any_msg):
-            any_msg.Unpack(self.data.pb_obj)
-            return self.data.pb_obj
-
-        def to_any(self):
-            any_msg = _any.Any()
-            any_msg.Pack(self.data.pb_obj)
-            any_msg.type_url = self.type_url
-            return any_msg
-
     class StepperMotor:
         class State:
             def __init__(self, switch=False, on=False, direction=False):
@@ -226,13 +194,3 @@ class Components:
                     self.data = self.Param()
                 else:
                     self.data = self.Param(**data)
-
-        def from_any(self, any_msg):
-            any_msg.Unpack(self.data.pb_obj)
-            return self.data.pb_obj
-
-        def to_any(self):
-            any_msg = _any.Any()
-            any_msg.Pack(self.data.pb_obj)
-            any_msg.type_url = self.type_url
-            return any_msg
