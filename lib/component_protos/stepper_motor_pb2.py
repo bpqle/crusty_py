@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13stepper_motor.proto\"8\n\x07SmState\x12\x0e\n\x06switch\x18\x01 \x01(\x08\x12\n\n\x02on\x18\x02 \x01(\x08\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\x1b\n\x08SmParams\x12\x0f\n\x07timeout\x18\x01 \x01(\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13stepper_motor.proto\"-\n\x07SmState\x12\x0f\n\x07running\x18\x02 \x01(\x08\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\x1b\n\x08SmParams\x12\x0f\n\x07timeout\x18\x01 \x01(\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,7 +22,7 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   _globals['_SMSTATE']._serialized_start=23
-  _globals['_SMSTATE']._serialized_end=79
-  _globals['_SMPARAMS']._serialized_start=81
-  _globals['_SMPARAMS']._serialized_end=108
+  _globals['_SMSTATE']._serialized_end=68
+  _globals['_SMPARAMS']._serialized_start=70
+  _globals['_SMPARAMS']._serialized_end=97
 # @@protoc_insertion_point(module_scope)

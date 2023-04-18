@@ -1,9 +1,9 @@
 import sys
-#import os
-#cpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-#libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
-#sys.path.insert(1, libpath)
-#sys.path.insert(1, cpath)
+import os
+cpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
+sys.path.insert(1, libpath)
+sys.path.insert(1, cpath)
 
 from lib.connect import Request, decide_poll
 from lib.components import Components
@@ -34,12 +34,10 @@ async def paramelize():
 
 
 async def lights_up(brightness):
-    logging.info("Changing lights to ", brightness)
+    logging.info(f"Changing lights to {brightness}")
     hl_state = {
         'manual': True,
-        'ephemera':  False,
         'brightness': brightness,
-        'daytime': True,
     }
     req = Request(request_type="ChangeState",
                   component='house-light',
@@ -54,10 +52,11 @@ async def main():
     logging.info("Lights initiating, connecting to decide-core.")
     poller = asyncio.create_task(decide_poll(components))
     await asyncio.create_task(paramelize())
+    await asyncio.sleep(3)
     await lights_up(20)
-    await asyncio.sleep(4)
+    await asyncio.sleep(3)
     await lights_up(50)
-    await asyncio.sleep(4)
+    await asyncio.sleep(5)
     await poller
 
 

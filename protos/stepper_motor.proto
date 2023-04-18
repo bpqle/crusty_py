@@ -1,8 +1,7 @@
 syntax = "proto3";
 
 message SmState {
-  bool switch = 1;
-  bool on = 2;
+  bool running = 2;
   bool direction = 3;
 }
 

@@ -11,10 +11,14 @@ You can download a pre-compiled `protoc` and place the files in the respective l
 usually
 All proto files can be compiled at once using
 ```
- protoc -I ./protos --python_out=./lib ./protos/*.proto --pyi_out=./protos
+ protoc -I ./protos --python_betterproto_out=./lib/component_protos ./protos/*.proto
 ```
-
-Generated python descriptors of protobuf message types located in `lib` can be imported, but the python classes themselves will not be generated until runtime. This means that development with an IDE will not be able to reference the classes and methods dynamically.
-In order to do so, we enable generation of corresponding `.pyi` files that can be used to check your code. Import them as you would the `.py` files. 
-
+Note that we are using `betterproto` for better function naming convention & easier API reference during development. `betterproto` will generate `.py` files without `_pb2` in the field.
+Doing 
+```
+ protoc -I ./protos --python_out=./lib/component_protos ./protos/*.proto --pyi_out=./protos
+```
+will instead generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./protos` for class reference.
+Also note that to use `betterproto` generated classes, google import of Any() and Empty() must be changed in the initially generated files:
+From `from .google import protobuf` to `from google.protobuf import any_pb2, empty_pb2`
 

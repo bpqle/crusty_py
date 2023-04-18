@@ -5,14 +5,12 @@ from typing import ClassVar as _ClassVar, Optional as _Optional
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class SmState(_message.Message):
-    __slots__ = ["switch", "on", "direction"]
-    SWITCH_FIELD_NUMBER: _ClassVar[int]
-    ON_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["running", "direction"]
+    RUNNING_FIELD_NUMBER: _ClassVar[int]
     DIRECTION_FIELD_NUMBER: _ClassVar[int]
-    switch: bool
-    on: bool
+    running: bool
     direction: bool
-    def __init__(self, switch: bool = ..., on: bool = ..., direction: bool = ...) -> None: ...
+    def __init__(self, running: bool = ..., direction: bool = ...) -> None: ...
 
 class SmParams(_message.Message):
     __slots__ = ["timeout"]
