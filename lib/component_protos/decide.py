@@ -8,7 +8,7 @@ from typing import Optional
 import betterproto
 import grpclib
 
-from .google import protobuf
+from google.protobuf import any_pb2, empty_pb2
 
 
 @dataclass
@@ -18,7 +18,7 @@ class StateChange(betterproto.Message):
     mustdefine a protobuf message type for their state
     """
 
-    state: protobuf.Any = betterproto.message_field(1)
+    state: any_pb2.Any = betterproto.message_field(1)
 
 
 @dataclass
@@ -29,7 +29,7 @@ class ComponentParams(betterproto.Message):
     parameters
     """
 
-    parameters: protobuf.Any = betterproto.message_field(1)
+    parameters: any_pb2.Any = betterproto.message_field(1)
 
 
 @dataclass
@@ -43,11 +43,11 @@ class Reply(betterproto.Message):
 
     # For state_change, state_reset, lock_expt, unlock_expt: indicates the
     # request was correctly formed and was acted on
-    ok: protobuf.Empty = betterproto.message_field(2, group="result")
+    ok: empty_pb2.Empty = betterproto.message_field(2, group="result")
     # indicates an error with the request, contents give the cause
     error: str = betterproto.string_field(3, group="result")
     # reply to get_parameters
-    params: protobuf.Any = betterproto.message_field(19, group="result")
+    params: any_pb2.Any = betterproto.message_field(19, group="result")
 
 
 @dataclass
@@ -62,11 +62,11 @@ class Pub(betterproto.Message):
     """
 
     time: datetime = betterproto.message_field(1)
-    state: protobuf.Any = betterproto.message_field(2)
+    state: any_pb2.Any = betterproto.message_field(2)
 
 
 class DecideControlStub(betterproto.ServiceStub):
-    async def change_state(self, *, state: Optional[protobuf.Any] = None) -> Reply:
+    async def change_state(self, *, state: Optional[any_pb2.Any] = None) -> Reply:
         """request change to state of a component"""
 
         request = StateChange()
@@ -82,7 +82,7 @@ class DecideControlStub(betterproto.ServiceStub):
     async def reset_state(self) -> Reply:
         """request reset to default state"""
 
-        request = protobuf.Empty()
+        request = empty_pb2.Empty()
 
         return await self._unary_unary(
             "/decide.DecideControl/ResetState",
@@ -105,7 +105,7 @@ class DecideControlStub(betterproto.ServiceStub):
     async def release_lock(self) -> Reply:
         """request unlock of experiment"""
 
-        request = protobuf.Empty()
+        request = empty_pb2.Empty()
 
         return await self._unary_unary(
             "/decide.DecideControl/ReleaseLock",
@@ -114,7 +114,7 @@ class DecideControlStub(betterproto.ServiceStub):
         )
 
     async def set_parameters(
-        self, *, parameters: Optional[protobuf.Any] = None
+        self, *, parameters: Optional[any_pb2.Any] = None
     ) -> Reply:
         """request update to parameter values"""
 
@@ -131,7 +131,7 @@ class DecideControlStub(betterproto.ServiceStub):
     async def get_parameters(self) -> Reply:
         """request parameter values for component"""
 
-        request = protobuf.Empty()
+        request = empty_pb2.Empty()
 
         return await self._unary_unary(
             "/decide.DecideControl/GetParameters",
