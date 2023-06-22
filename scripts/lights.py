@@ -1,15 +1,15 @@
 import sys
 import os
+import asyncio
+import time
+import logging
+
 cpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
 sys.path.insert(1, libpath)
 sys.path.insert(1, cpath)
-
 from lib.connect import Request, decide_poll
-from lib.components import Components
-import asyncio
-import time
-import logging
+from lib.components import Component
 
 
 components = ['house-light', 'stepper-motor',

@@ -1,45 +1,16 @@
+import asyncio
 import zmq
 import zmq.asyncio
 from enum import Enum
 from components import Component
 import logging
+import inspect
 
 logger = logging.getLogger(__name__)
 REQ_ENDPOINT = "tcp://127.0.0.1:7897"
 PUB_ENDPOINT = "tcp://127.0.0.1:7898"
 DECIDE_VERSION = b"DCDC01"
-
-
-async def decide_poll(components=None):
-    ctx = zmq.asyncio.Context()
-    subsock = ctx.socket(zmq.SUB)
-    logger.debug("Created decide-core subscriber")
-    if components is None:
-        subsock.subscribe("")
-        logging.info(f"Sub Socket Created, Listening for all messages.")
-    else:
-        for c in components:
-            topic = f"state/{c}"
-            subsock.subscribe(topic.encode('utf-8'))
-            logging.info(f"Sub Socket subscribed to {topic}.")
-    subsock.connect(PUB_ENDPOINT)
-    logging.debug(f"Sub Socket connected")
-
-    while 1:
-        multipart = await subsock.recv_multipart()
-        *topic, msg = multipart
-        topic = topic[0].decode("utf-8")
-        logger.debug(f" state-pub - Received Pub Event of topic {topic}")
-        if "/" in topic:
-            _state, component = topic.split("/")
-            if component not in components:
-                logger.error(f" state-pub - Received published event of unsubscribed component {component}")
-            else:
-                logger.debug(f" state-pub - Parsing message")
-                tstamp, state_msg = Component("state", component).from_pub(msg)
-                logger.info(f" state-pub - Message: {state_msg} at Time: {tstamp}")
-        else:
-            logger.error(f" state-pub - Non-component topic {topic}")
+TIMEOUT = 100
 
 
 class RequestType(Enum):
@@ -68,18 +39,77 @@ class Request:
         self.body = body_encode.SerializeToString()
         logger.debug(f" request - {self.request_type} - Req Serialized to String")
 
-    async def send(self):
+    async def send(self, context=None):
         multi_msg = [DECIDE_VERSION, self.request_type, self.body]
         if self.component is not None:
             multi_msg.append(self.component.encode('utf-8'))
-        ctx = zmq.asyncio.Context()
+
+        ctx = context or zmq.asyncio.Context.instance()
         req_sock = ctx.socket(zmq.REQ)
         req_sock.connect(REQ_ENDPOINT)
         logger.debug(f" request - {self.request_type} - Request Socket Created")
         await req_sock.send_multipart(multi_msg)
         logger.debug(f" request - {self.request_type} - Request sent, awaiting reply")
-        *dc, reply = await req_sock.recv_multipart()
-        logger.debug(f" request - {self.request_type} - Reply received")
-        if dc[0] != DECIDE_VERSION:
-            logger.warning(f"Mismatch Version of DECIDE-RS {dc[0]}")
-        return reply.decode('utf-8') == "  "
+
+        if req_sock.poll(TIMEOUT) == zmq.POLLIN:
+            *dc, reply = req_sock.recv_multipart()
+            logger.debug(f" request - {self.request_type} - Reply received '{reply.decode('utf-8')}'")
+            if dc[0] != DECIDE_VERSION:
+                logger.warning(f"Mismatch Version of DECIDE-RS {dc[0]}")
+            return reply
+        else:  # timeout awaiting response
+            logger.error(f"Timed-out awaiting response for {self.request_type}")
+
+    async def send_and_wait(self, timeout=100):
+        try:
+            async with asyncio.timeout(timeout):
+                reply = await self.send()
+        except TimeoutError:
+            logger.error("Timed out awaiting response from decide-rs")
+        return reply
+
+
+# Await state change from component with optional timeout
+# If caught returns True, immediately go to advance
+# If timeout, also go to advance
+async def catch(components, caught, advance, timeout=None, context=None, *args, **kwargs):
+    ctx = context or zmq.asyncio.Context.instance()
+    poller = zmq.asyncio.Poller()
+    if isinstance(components, str):
+        subber = ctx.socket(zmq.SUB)
+        subber.connect(PUB_ENDPOINT)
+        subber.subscribe(f"state/{components}".encode('utf-8'))
+        poller.register(subber, zmq.POLLIN)
+    elif isinstance(components, list):
+        for c in components:
+            subber = ctx.socket(zmq.SUB)
+            subber.connect("ADDRESS")
+            subber.subscribe(f"state/{c}".encode('utf-8'))
+            poller.register(subber, zmq.POLLIN)
+    interrupted = False
+
+    def test(polt, func):
+        while True:
+            poll_res = dict(await polt.poll())
+            for sock, flag in poll_res:
+                if flag == zmq.POLLIN:
+                    *topic, msg = sock.recv_multipart(zmq.DONTWAIT)
+                    state, comp = topic[0].decode("utf-8").split("/")
+                    tstamp, state_msg = Component(state, comp).from_pub(msg)
+                    if func(state_msg):
+                        return True
+
+    if timeout is not None:
+        try:
+            async with asyncio.timeout(timeout):
+                interrupted = test(poller, caught)
+        except TimeoutError:
+            print("Oh well")
+    else:
+        interrupted = test(poller, caught)
+
+    if "interrupted" in inspect.getfullargspec(advance).args:
+        advance(interrupted)
+    else:
+        advance()
+
