@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import time
 import logging
+import random
 libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
 sys.path.insert(1, libpath)
 
@@ -28,13 +29,13 @@ p.add_argument('--correction-timeout', help="correction trials for incorrect fai
 p.add_argument('--lightsout-duration', help="default lights out duration for incorrect responses (in ms)",
                action='store_const', default=10000)
 p.add_argument('--cue-frequency', help="frequency to display cue lights for correction trials",
-               choices=['always','sometimes','never'], default='never')
+               choices=['always', 'sometimes', 'never'], default='never')
 p.add_argument('--cue-color', help="color of cue lights for correction trials",
-               choices=['red','blue','green','white'], default='blue')
+               choices=['red', 'blue', 'green', 'white'], default='blue')
 p.add_argument('--feed-delay', help='time (in ms) to wait between response and feeding',
                action='store_const', default=0)
 p.add_argument('--init-position', help='key position to initiate trial',
-               choices=['left','center','right'])
+               choices=['left', 'center', 'right'])
 args = p.parse_args()
 
 
@@ -64,6 +65,8 @@ params = {
 
 pb = PlayBack(args['config'])
 stim = iter(pb)
+correction = 0
+stim_data = next(stim).copy()
 
 
 def await_init():
@@ -71,12 +74,49 @@ def await_init():
         pecked = key_state.to_dict()
         if pecked[params['init_key']]:
             return True
-    catch('peck-keys', peck_init, present_stim)
+    await catch('peck-keys', peck_init, present_stim)
 
 
 def present_stim():
-    stim_data = next(stim)
-    play_handle = pb.play()
+
+    play_handle = pb.play(stim_data['name'])
+    await play_handle
+    await_respond()
+
+
+def await_respond():
+    if correction & correction_check():
+        cue(pb.current_cue(), params['cue_color'])
+
+    response = 'timeout'
+
+    def resp_check(key_state):
+        pecked = key_state.to_dict()
+        for key, val in pecked.items():
+            if val & (key in stim_data):
+                response = key
+                return True
+        return False
+
+    await catch('peck-keys', resp_check, complete, timeout=params['response-window'])
+
+
+def complete():
+    # Next stim, determine correct
+    response
+    # Log Trial
+
+    await_init()
+
+
+def correction_check():
+    if params['cue_frequency'] == 'never':
+        return False
+    elif params['cue_frequency'] == 'always':
+        return True
+    elif params['cue_frequency'] == 'sometimes':
+        return np.exp(correction/params['max_corrections']) >= random.random()
+
 
 if __name__ == '__main__':
     await_init()
