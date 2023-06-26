@@ -7,10 +7,6 @@ import logging
 import time
 
 logger = logging.getLogger(__name__)
-REQ_ENDPOINT = "tcp://127.0.0.1:7897"
-PUB_ENDPOINT = "tcp://127.0.0.1:7898"
-DECIDE_VERSION = b"DCDC01"
-TIMEOUT = 100
 
 
 class RequestType(Enum):
@@ -83,7 +79,7 @@ async def catch(components, caught, advance, timeout=None, **kwargs):
     elif isinstance(components, list):
         for c in components:
             subber = ctx.socket(zmq.SUB)
-            subber.connect("ADDRESS")
+            subber.connect(PUB_ENDPOINT)
             subber.subscribe(f"state/{c}".encode('utf-8'))
             poller.register(subber, zmq.POLLIN)
 

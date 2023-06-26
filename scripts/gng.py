@@ -9,7 +9,7 @@ libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
 sys.path.insert(1, libpath)
 
 from lib.control import *
-from lib.collect import *
+from lib.compose import *
 from lib.connect import *
 
 p = argparse.ArgumentParser()
