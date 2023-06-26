@@ -8,11 +8,9 @@ import random
 libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
 sys.path.insert(1, libpath)
 
-from lib.interact import *
-from lib.utils import *
+from lib.control import *
+from lib.collect import *
 from lib.connect import *
-from lib.components import Component
-
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -43,6 +41,8 @@ state = {
     'trial': 0,
     'phase': None,
     'result': None,
+    'correct': False,
+    'response': None,
     'correction': 0,
     'stimulus': None,
 }
@@ -62,7 +62,7 @@ params = {
     'min_iti': 100,
     'init_key': args['init-position'],
 }
-
+lights = Sun(interval=300)
 pb = PlayBack(args['config'])
 stim = iter(pb)
 correction = 0
@@ -78,7 +78,6 @@ def await_init():
 
 
 def present_stim():
-
     play_handle = pb.play(stim_data['name'])
     await play_handle
     await_respond()
@@ -87,10 +86,10 @@ def present_stim():
 def await_respond():
     if correction & correction_check():
         cue(pb.current_cue(), params['cue_color'])
-
     response = 'timeout'
 
     def resp_check(key_state):
+        nonlocal response
         pecked = key_state.to_dict()
         for key, val in pecked.items():
             if val & (key in stim_data):
@@ -98,14 +97,47 @@ def await_respond():
                 return True
         return False
 
-    await catch('peck-keys', resp_check, complete, timeout=params['response-window'])
+    await catch('peck-keys', resp_check, complete,
+                timeout=params['response-window'],
+                response=response)
 
 
-def complete():
-    # Next stim, determine correct
-    response
+def complete(**kwargs):
+    response = kwargs['response']
+    rtime = kwargs['timer']
+    global stim_data
+    global correction
+    # Determine outcome
+    outcome = stim_data['response'][response]
+    rand = random.random()
+    if outcome['correct']:
+        if outcome['p_reward'] >= rand:
+            await asyncio.sleep(params['feed_delay'])
+            feed(params['feed_duration'])
+        result = 'feed'
+    else:
+        if outcome['p_punish'] >= rand:
+            await blip(0, params['punish_duration'])
+        result = 'no_feed'
     # Log Trial
-
+    state.update({
+        'trial': state.get('trial', 0) + 1,
+        'result': result,
+        'response': response,
+        'correct': outcome['correct'],
+        'correction': correction,
+        'stimulus': stim_data['name']
+    })
+    logger.info()
+    # Advance
+    if (response == 'timeout') & params['correction_timeout']:
+        logger.debug("Response timeout, next trial is correction trial.")
+    elif (response != 'timeout') & (not outcome['correct']) & (correction < params['max_corrections']):
+        correction += 1
+        logger.debug("Next Trial correction.")
+    else:
+        correction = 0
+        stim_data = next(stim).copy()
     await_init()
 
 
@@ -115,8 +147,9 @@ def correction_check():
     elif params['cue_frequency'] == 'always':
         return True
     elif params['cue_frequency'] == 'sometimes':
-        return np.exp(correction/params['max_corrections']) >= random.random()
+        return np.exp(correction / params['max_corrections']) >= random.random()
 
 
 if __name__ == '__main__':
+    asyncio.run(lights.cycle())
     await_init()

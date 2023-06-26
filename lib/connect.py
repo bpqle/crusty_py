@@ -4,7 +4,7 @@ import zmq.asyncio
 from enum import Enum
 from components import Component
 import logging
-import inspect
+import time
 
 logger = logging.getLogger(__name__)
 REQ_ENDPOINT = "tcp://127.0.0.1:7897"
@@ -72,8 +72,8 @@ class Request:
 # Await state change from component with optional timeout
 # If caught returns True, immediately go to advance
 # If timeout, also go to advance
-async def catch(components, caught, advance, timeout=None, context=None, *args, **kwargs):
-    ctx = context or zmq.asyncio.Context.instance()
+async def catch(components, caught, advance, timeout=None, **kwargs):
+    ctx = kwargs['context'] or zmq.asyncio.Context.instance()
     poller = zmq.asyncio.Poller()
     if isinstance(components, str):
         subber = ctx.socket(zmq.SUB)
@@ -86,6 +86,7 @@ async def catch(components, caught, advance, timeout=None, context=None, *args, 
             subber.connect("ADDRESS")
             subber.subscribe(f"state/{c}".encode('utf-8'))
             poller.register(subber, zmq.POLLIN)
+
     interrupted = False
 
     def test(polt, func):
@@ -97,19 +98,20 @@ async def catch(components, caught, advance, timeout=None, context=None, *args, 
                     state, comp = topic[0].decode("utf-8").split("/")
                     tstamp, state_msg = Component(state, comp).from_pub(msg)
                     if func(state_msg):
-                        return True
+                        timed = time.time()
+                        return True, timed
 
     if timeout is not None:
+        start = time.time()
         try:
             async with asyncio.timeout(timeout):
-                interrupted = test(poller, caught)
+                interrupted, stop = test(poller, caught)
+                timer = stop - start
         except TimeoutError:
-            print("Oh well")
+            timer = timeout
     else:
+        timer = None
         interrupted = test(poller, caught)
 
-    if "interrupted" in inspect.getfullargspec(advance).args:
-        advance(interrupted)
-    else:
-        advance()
+    advance(interrupted, timer, **kwargs)
 

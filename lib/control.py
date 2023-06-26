@@ -22,13 +22,11 @@ def feed(interval):
                   body={'running': True, 'direction': True}).send_and_wait()
     await start
 
-    stop = asyncio.run(
-        catch('stepper-motor',
-              lambda pub: not pub.running,
-              lambda x: True,
-              timeout=interval)
-    )
-    return stop
+    await catch('stepper-motor',
+                lambda pub: not pub.running,
+                lambda x: True,
+                timeout=interval)
+    return
 
 
 def cue(pos, color):
@@ -41,22 +39,50 @@ def cue(pos, color):
     await Request(request_type="ChangeState",
                   component=pos,
                   body={'led_state': color}).send_and_wait()
+    return
 
 
-async def blip(brightness, interval, context=None):
-    ctx = context or zmq.asyncio.Context.instance()
+class Sun:
+    def __init__(self, interval):
+        self.brightness = 0
+        self.daytime = False
+        self.interval = interval
+
+    async def cycle(self, **kwargs):
+        await Request(request_type="SetParameters",
+                      component='house-light',
+                      body={'clock_interval': self.interval}
+                      ).send_and_wait()
+        interval_check = await Request(request_type="GetParameters",
+                                       component='house-light',
+                                       body=None).send_and_wait()
+        if interval_check.clock_interval != self.interval:
+            raise f"House-Light Clock Interval not set to {self.interval}"
+
+        def light_update(msg):
+            self.brightness = msg.brightness
+            self.daytime = msg.daytime
+            return True
+
+        while True:
+            await catch('house-light', light_update, lambda x: None, timeout=self.interval+1)
+
+
+async def blip(**kwargs):
+    ctx = kwargs['context'] or zmq.asyncio.Context.instance()
     logger.debug("Setting House Lights")
     asyncio.run(
         catch('house-light',
-              lambda pub: True if pub.brightness == brightness else False,
+              lambda pub: True if pub.brightness == kwargs['brightness'] else False,
               lambda x: True,
               timeout=100)
     )
     await Request(request_type="ChangeState",
                   component='house-light',
-                  body={'manual': True, 'brightness': brightness}
+                  body={'manual': True, 'brightness': kwargs['brightness']}
                   ).send_and_wait()
-    await asyncio.sleep(interval)
+
+    await asyncio.sleep(kwargs['interval'])
     await Request(request_type="ChangeState",
                   component='house-light',
                   body={'manual': False, 'ephemera': True}
@@ -165,4 +191,3 @@ class PlayBack:
                       ).send_and_wait()
         await pub_confirmation
         return
-
