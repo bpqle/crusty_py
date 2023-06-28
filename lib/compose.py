@@ -1,18 +1,13 @@
-from connect import Request
-from components import Component
 import asyncio
 import logging
-import zmq
-import zmq.asyncio
 import yaml
-import urllib3
-import traceback
 import json
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
 
-def global_config():
+async def global_config():
     with open("~/.config/py_crust/config.json", "r") as f:
         try:
             config = yaml.safe_load(f)
@@ -30,7 +25,7 @@ def log_trial(state):
     return
 
 
-def slack(msg, usr=None):
+async def slack(msg, usr=None):
     try:
         if isinstance(usr, list):
             users = "<"+"> <".join(usr)+">"
@@ -40,13 +35,14 @@ def slack(msg, usr=None):
         else:
             message = msg
         slack_message = {'text': message}
-        http = urllib3.PoolManager()
-        response = http.request('POST',
-                                SLACK_HOOK,
-                                body=json.dump(slack_message),
-                                headers={'Content-Type': 'application`json'},
-                                retries=False)
-    except:
-        traceback.print_exc()
+        async with aiohttp.ClientSession as session:
+            async with session.post(url=SLACK_HOOK,
+                                    json=slack_message,
+                                    headers={'Content-Type': 'application`json'}
+                                    ) as rep:
+                reply = await rep.json()
+    except Exception as e:
+        logger.error(f"Slack Error: {e}")
 
+    logger.info(f"Slacked user, response: {reply}")
     return

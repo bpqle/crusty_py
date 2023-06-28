@@ -47,8 +47,9 @@ class Request:
         await req_sock.send_multipart(multi_msg)
         logger.debug(f" request - {self.request_type} - Request sent, awaiting reply")
 
-        if req_sock.poll(TIMEOUT) == zmq.POLLIN:
-            *dc, reply = req_sock.recv_multipart()
+        poll_res = await req_sock.poll(TIMEOUT)
+        if poll_res == zmq.POLLIN:
+            *dc, reply = await req_sock.recv_multipart()
             logger.debug(f" request - {self.request_type} - Reply received '{reply.decode('utf-8')}'")
             if dc[0] != DECIDE_VERSION:
                 logger.warning(f"Mismatch Version of DECIDE-RS {dc[0]}")
@@ -85,15 +86,16 @@ async def catch(components, caught, advance, timeout=None, **kwargs):
 
     interrupted = False
 
-    def test(polt, func):
+    async def test(polt, func):
         while True:
             poll_res = dict(await polt.poll())
             for sock, flag in poll_res:
                 if flag == zmq.POLLIN:
-                    *topic, msg = sock.recv_multipart(zmq.DONTWAIT)
+                    *topic, msg = await sock.recv_multipart(zmq.DONTWAIT)
                     state, comp = topic[0].decode("utf-8").split("/")
-                    tstamp, state_msg = Component(state, comp).from_pub(msg)
-                    if func(state_msg):
+                    tstamp, state_msg = await Component(state, comp).from_pub(msg)
+                    func_res = await func(state_msg)
+                    if func_res:
                         timed = time.time()
                         return True, timed
 
@@ -101,13 +103,13 @@ async def catch(components, caught, advance, timeout=None, **kwargs):
         start = time.time()
         try:
             async with asyncio.timeout(timeout):
-                interrupted, stop = test(poller, caught)
+                interrupted, stop = await test(poller, caught)
                 timer = stop - start
         except TimeoutError:
             timer = timeout
     else:
         timer = None
-        interrupted = test(poller, caught)
+        interrupted, _ = await test(poller, caught)
 
     advance(interrupted, timer, **kwargs)
 

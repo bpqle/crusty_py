@@ -24,7 +24,7 @@ class Component:
         else:
             logger.error(f"Unrecognized/Unspecified Component Name {component}")
 
-    def from_any(self, any_msg: _any.Any):
+    async def from_any(self, any_msg: _any.Any):
         if any_msg.type_url == self.component.type_url:
             any_string = any_msg.value
             res = self.component.data.parse(any_string)
@@ -33,29 +33,29 @@ class Component:
         else:
             logger.error(f" Mismatching type_urls")
 
-    def to_any(self):
+    async def to_any(self):
         any_msg = _any.Any()
         any_msg.Pack(self.component.data)
         any_msg.type_url = self.component.type_url
         logger.debug(f"{self.name} - {self.meta_type} - packed pb_Any.")
         return any_msg
 
-    def from_pub(self, msg):
+    async def from_pub(self, msg):
         pub_msg = dc_pb.Pub()
         pub_msg.parse(msg)
-        state_msg = self.from_any(pub_msg.state)
+        state_msg = await self.from_any(pub_msg.state)
         logger.debug(f"{self.name} - state-pub - message parsed")
         return pub_msg.time, state_msg
 
-    def to_req(self):
+    async def to_req(self):
         if self.meta_type == 'state':
             req_msg = dc_pb.StateChange()
-            req_msg.state.CopyFrom(self.to_any())
+            req_msg.state.CopyFrom(await self.to_any())
             logger.debug(f"{self.name} - state request formed")
             return req_msg
         elif self.meta_type == 'param':
             req_msg = dc_pb.ComponentParams()
-            req_msg.parameters.CopyFrom(self.to_any())
+            req_msg.parameters.CopyFrom(await self.to_any())
             logger.debug(f"{self.name} - params request formed")
             return req_msg
         else:

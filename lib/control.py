@@ -10,8 +10,8 @@ from lib.component_protos.sound_alsa import SaStatePlayBack as PBState
 logger = logging.getLogger(__name__)
 
 
-def feed(interval):
-    start = asyncio.run(
+async def feed(interval):
+    start = asyncio.create_task(
         catch('stepper-motor',
               lambda pub: pub.running,
               lambda x: True,
@@ -29,8 +29,8 @@ def feed(interval):
     return
 
 
-def cue(pos, color):
-    asyncio.run(
+async def cue(pos, color):
+    asyncio.create_task(
         catch(pos,
               lambda pub: pub.led_state == color,
               lambda x: True,
@@ -59,7 +59,7 @@ class Sun:
         if interval_check.clock_interval != self.interval:
             raise f"House-Light Clock Interval not set to {self.interval}"
 
-        def light_update(msg):
+        async def light_update(msg):
             self.brightness = msg.brightness
             self.daytime = msg.daytime
             return True
@@ -68,26 +68,26 @@ class Sun:
             await catch('house-light', light_update, lambda x: None, timeout=self.interval+1)
 
 
-async def blip(**kwargs):
+async def blip(brightness, interval, **kwargs):
     ctx = kwargs['context'] or zmq.asyncio.Context.instance()
     logger.debug("Setting House Lights")
-    asyncio.run(
+    asyncio.create_task(
         catch('house-light',
-              lambda pub: True if pub.brightness == kwargs['brightness'] else False,
+              lambda pub: True if pub.brightness == brightness else False,
               lambda x: True,
               timeout=100)
     )
     await Request(request_type="ChangeState",
                   component='house-light',
-                  body={'manual': True, 'brightness': kwargs['brightness']}
+                  body={'manual': True, 'brightness': brightness}
                   ).send_and_wait()
 
-    await asyncio.sleep(kwargs['interval'])
+    await asyncio.sleep(interval)
     await Request(request_type="ChangeState",
                   component='house-light',
                   body={'manual': False, 'ephemera': True}
                   ).send_and_wait()
-    asyncio.run(
+    asyncio.create_task(
         catch('house-light',
               lambda pub: not pub.manual,
               lambda x: True,
@@ -148,17 +148,17 @@ class PlayBack:
         self.stimulus = self.stim_data[item]['name']
         return self.stim_data[item]
 
-    def current_cue(self):
+    async def current_cue(self):
         if self.stimulus is None:
             logger.error("Trying to determine cue but no stimulus specified. Try initiating playlist first")
             raise
         return self.cue_locations[self.stimulus]
 
-    def play(self, stim=None):
+    async def play(self, stim=None):
         if stim is None:
             stim = self.stimulus
 
-        pub_confirmation = asyncio.run(
+        pub_confirmation = asyncio.create_task(
             catch('audio-playback',
                   lambda pub: (pub.audio_id == stim) & (pub.playback == PBState.PLAYING),
                   lambda x: True,
@@ -170,7 +170,7 @@ class PlayBack:
                       ).send_and_wait()
         await pub_confirmation
 
-        completion = asyncio.run(
+        completion = asyncio.create_task(
             catch('audio-playback',
                   lambda pub: (pub.playback == PBState.STOPPED),
                   lambda x: True,
@@ -179,7 +179,7 @@ class PlayBack:
         return completion
 
     def stop(self, context=None):
-        pub_confirmation = asyncio.run(
+        pub_confirmation = asyncio.create_task(
             catch('audio-playback',
                   lambda pub: (pub.playback == PBState.STOPPED),
                   lambda x: True,

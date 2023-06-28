@@ -70,7 +70,7 @@ stim_data = next(stim).copy()
 
 
 def await_init():
-    def peck_init(key_state):
+    async def peck_init(key_state):
         pecked = key_state.to_dict()
         if pecked[params['init_key']]:
             return True
@@ -78,17 +78,16 @@ def await_init():
 
 
 def present_stim():
-    play_handle = pb.play(stim_data['name'])
-    await play_handle
+    await pb.play(stim_data['name'])
     await_respond()
 
 
 def await_respond():
     if correction & correction_check():
-        cue(pb.current_cue(), params['cue_color'])
+        await cue(pb.current_cue(), params['cue_color'])
     response = 'timeout'
 
-    def resp_check(key_state):
+    async def resp_check(key_state):
         nonlocal response
         pecked = key_state.to_dict()
         for key, val in pecked.items():
@@ -113,7 +112,7 @@ def complete(**kwargs):
     if outcome['correct']:
         if outcome['p_reward'] >= rand:
             await asyncio.sleep(params['feed_delay'])
-            feed(params['feed_duration'])
+            await feed(params['feed_duration'])
         result = 'feed'
     else:
         if outcome['p_punish'] >= rand:
