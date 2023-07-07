@@ -22,3 +22,4 @@ will instead generate google's vanilla `.py` files with `_pb2` in the name, as w
 Also note that to use `betterproto` generated classes, google import of Any() and Empty() must be changed in the initially generated files:
 From `from .google import protobuf` to `from google.protobuf import any_pb2, empty_pb2`
 
+```rsync -av -e ssh --exclude='.*' ./py_crust/ dimmabone:/root/py_crust/```

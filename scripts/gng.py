@@ -8,9 +8,9 @@ import random
 libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
 sys.path.insert(1, libpath)
 
+from lib.device import *
 from lib.control import *
-from lib.compose import *
-from lib.connect import *
+from lib.bind import *
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -62,50 +62,47 @@ params = {
     'min_iti': 100,
     'init_key': args['init-position'],
 }
-lights = Sun(interval=300)
-pb = PlayBack(args['config'])
-stim = iter(pb)
-correction = 0
-stim_data = next(stim).copy()
 
 
-def await_init():
-    async def peck_init(key_state):
+async def await_init():
+    def peck_init(key_state):
         pecked = key_state.to_dict()
         if pecked[params['init_key']]:
             return True
-    await catch('peck-keys', peck_init, present_stim)
+    await catch('peck-keys',
+                caught=peck_init)
 
 
-def present_stim():
+async def present_stim():
     await pb.play(stim_data['name'])
-    await_respond()
 
 
-def await_respond():
-    if correction & correction_check():
+async def await_respond():
+    if correction & await correction_check():
         await cue(pb.current_cue(), params['cue_color'])
     response = 'timeout'
 
-    async def resp_check(key_state):
-        nonlocal response
+    def resp_check(key_state):
         pecked = key_state.to_dict()
-        for key, val in pecked.items():
-            if val & (key in stim_data):
-                response = key
+        for k, v in pecked.items():
+            if v & (k in stim_data):
                 return True
         return False
 
-    await catch('peck-keys', resp_check, complete,
-                timeout=params['response-window'],
-                response=response)
+    responded, msg, rtime = await catch('peck-keys',
+                                        caught=resp_check,
+                                        timeout=params['response-window'])
+    if not responded:
+        return response, None
+    else:
+        for key, val in msg.to_dict().items():
+            if val & (key in stim_data):
+                response = key
+        return response, rtime
 
 
-def complete(**kwargs):
-    response = kwargs['response']
-    rtime = kwargs['timer']
+async def complete(response, rtime):
     global stim_data
-    global correction
     # Determine outcome
     outcome = stim_data['response'][response]
     rand = random.random()
@@ -123,8 +120,9 @@ def complete(**kwargs):
         'trial': state.get('trial', 0) + 1,
         'result': result,
         'response': response,
+        'rtime': rtime,
         'correct': outcome['correct'],
-        'correction': correction,
+        'correction': state.get('correction'),
         'stimulus': stim_data['name']
     })
     logger.info()
@@ -137,10 +135,9 @@ def complete(**kwargs):
     else:
         correction = 0
         stim_data = next(stim).copy()
-    await_init()
 
 
-def correction_check():
+async def correction_check():
     if params['cue_frequency'] == 'never':
         return False
     elif params['cue_frequency'] == 'always':
@@ -149,6 +146,26 @@ def correction_check():
         return np.exp(correction / params['max_corrections']) >= random.random()
 
 
-if __name__ == '__main__':
+async def main():
+    lights = await Sun.spawn(interval=300)
+    pb = await PlayBack.spawn(args['config'])
+    stim = iter(pb)
+    correction = 0
+    stim_data = next(stim).copy()
+
     asyncio.run(lights.cycle())
-    await_init()
+
+    while True:
+        await await_init()
+        await present_stim()
+        response, rtime = await await_respond()
+        await complete(response, rtime)
+        print(state)
+
+
+if __name__ == '__main__':
+    try:
+        await main()
+    except KeyboardInterrupt:
+        await slack("PyCrust Lights is shutting down", usr=args['user'])
+
