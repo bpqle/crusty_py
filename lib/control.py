@@ -19,6 +19,19 @@ TIMEOUT = config['TIMEOUT']
 SLACK_HOOK = config['SLACK_HOOK']
 
 
+async def lincoln(log):
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    streamer = logging.StreamHandler(sys.stdout)
+    streamer.setFormatter(formatter)
+    filer = logging.FileHandler(log, mode='w')
+    filer.setFormatter(formatter)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        handlers=[filer, streamer]
+    )
+    logger.debug(f"Logging to file {log}")
+
+
 async def log_trial(state):
     return
 

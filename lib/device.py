@@ -12,6 +12,22 @@ from lib.control import *
 logger = logging.getLogger(__name__)
 
 
+async def set_feeder(duration, **kwargs):
+    logger.debug("Setting feed duration")
+    param_set = await Request.spawn(request_type="SetParameters",
+                                    component='stepper-motor',
+                                    body={'timeout': duration}
+                                    )
+    await param_set.send()
+
+    interval_check = await Request.spawn(request_type="GetParameters",
+                                         component='stepper-motor',
+                                         body=None)
+    check_res = await interval_check.send()
+    if check_res.timeout != duration:
+        logger.error(f"Stepper motor timeout parameter not set to {duration}")
+
+
 async def feed(duration, **kwargs):
     start = asyncio.create_task(
         catch('stepper-motor',
@@ -71,7 +87,7 @@ class Sun:
                                              body=None)
         check_res = await interval_check.send()
         if check_res.clock_interval != self.interval:
-            raise f"House-Light Clock Interval not set to {self.interval}"
+            logger.error(f"House-Light Clock Interval not set to {self.interval}")
 
         def light_update(msg):
             self.brightness = msg.brightness
