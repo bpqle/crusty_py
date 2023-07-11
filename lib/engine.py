@@ -1,13 +1,12 @@
-from bind import *
 import asyncio
 import logging
 import zmq
 import zmq.asyncio
 import json
 import numpy as np
-from lib.component_protos.sound_alsa import SaStatePlayBack as PBState
-from lib.errata import *
-from lib.control import *
+from lib.generator_hex.sound_alsa_pb2.SaState import PlayBack
+from .errata import *
+from .contact import *
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +28,7 @@ async def set_feeder(duration, **kwargs):
 
 
 async def feed(duration, **kwargs):
+    logger.debug('feed() called, requesting stepper motor')
     start = asyncio.create_task(
         catch('stepper-motor',
               caught=lambda pub: pub.running,
@@ -41,16 +41,18 @@ async def feed(duration, **kwargs):
                               body={'running': True, 'direction': True})
     await req.send()
     await start
-
+    logger.debug('feeding confirmed by decide-rs, awaiting motor stop')
     await catch('stepper-motor',
                 caught=lambda pub: not pub.running,
                 failure=lambda i: pub_err("stepper-motor") if not i else None,
                 timeout=duration + TIMEOUT,
                 **kwargs)
+    logger.debug('motor stop confirmed by decide-rs')
     return
 
 
 async def cue(pos, color):
+    logger.debug('Requesting cue led')
     asyncio.create_task(
         catch(pos,
               caught=lambda pub: pub.led_state == color,
@@ -87,7 +89,8 @@ class Sun:
                                              body=None)
         check_res = await interval_check.send()
         if check_res.clock_interval != self.interval:
-            logger.error(f"House-Light Clock Interval not set to {self.interval}")
+            logger.error(f"House-Light Clock Interval not set to {self.interval},"
+                         f" got {check_res.clock_interval}")
 
         def light_update(msg):
             self.brightness = msg.brightness
@@ -95,15 +98,16 @@ class Sun:
             return True
 
         while True:
+            logger.debug('new house light cycle, awaiting update')
             await catch('house-light',
                         caught=light_update,
                         failure=lambda i: pub_err("house-light") if not i else None,
                         timeout=self.interval + 1)
 
 
-async def blip(brightness, interval, **kwargs):
-    ctx = kwargs['context'] or zmq.asyncio.Context.instance()
-    logger.debug("Setting House Lights")
+async def blip(brightness, interval):
+    ctx = zmq.asyncio.Context.instance()
+    logger.debug("Manually changing house lights")
     asyncio.create_task(
         catch('house-light',
               caught=lambda pub: True if pub.brightness == brightness else False,
@@ -115,9 +119,9 @@ async def blip(brightness, interval, **kwargs):
                               body={'manual': True, 'brightness': brightness}
                               )
     await req.send()
-
+    logger.debug("Manually changing house lights confirmed by decide-rs.")
     await asyncio.sleep(interval)
-
+    logger.debug("Returning house lights to cycle")
     asyncio.create_task(
         catch('house-light',
               lambda pub: not pub.manual,
@@ -129,24 +133,31 @@ async def blip(brightness, interval, **kwargs):
                                body={'manual': False, 'ephemera': True}
                                )
     await req2.send()
+    logger.debug("Returning house lights to cycle succeeded")
     return
 
 
-class PlayBack:
+class JukeBox:
+    def __init__(self):
+        self.stim_duration = None
+        self.playing = None
+        self.stim_data = None
+        self.sample_rate = None
+
     @classmethod
-    async def spawn(cls, conf_fs, **kwargs):
-        self = PlayBack()
-        with open(conf_fs) as f:
-            cf = json.load(f)
+    async def spawn(cls, conf_fs, shuffle=True):
+        logger.info("Spawning Playback Machine")
+        self = JukeBox()
+        with open(conf_fs) as file:
+            cf = json.load(file)
             self.dir = cf['stimulus_root']
             self.stim_data = cf['stimuli']
 
         self.cue_locations = {}
         playlist = []
-        # Validate Stimuli List & Store Cue Location
-        # Also create playlist
-        for i, stim in enumerate(self.stim_data):
 
+        logger.debug("Validating and generating playlist")
+        for i, stim in enumerate(self.stim_data):
             cue_loc = None
             for action, consq in stim['responses'].items():
                 total = (consq['p_reward'] if 'p_reward' in consq else 0) + \
@@ -160,22 +171,25 @@ class PlayBack:
             playlist.append(np.repeat(i, stim['frequency']))
 
         self.playlist = np.array(playlist).flatten()
-        if kwargs['shuffle']:
+        if shuffle:
             np.random.shuffle(self.playlist)
 
-        # Request controller to import stimuli
+        logger.debug("Requesting stimuli directory change")
         params = await Request.spawn(request_type="SetParameters",
                                      component='audio-playback',
-                                     body={'audio_dir': conf_fs}
+                                     body={'audio_dir': cf['stimulus_root']}
                                      )
         await params.send()
         dir_check = await Request.spawn(request_type="GetParameters",
                                         component='audio-playback',
                                         body=None,
                                         )
-        check_res = await dir_check.send()
-        if check_res.audio_dir != conf_fs:
-            raise "AUDIO DIRECTORY MISMATCH?"
+        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
+        check_res = await dir_check.send(timeout=10000)
+        if check_res.audio_dir != cf['stimulus_root']:
+            logger.error(f"Auditory folder mismatch: got {check_res.audio_dir} expected {cf['stimulus_root']}")
+        self.sample_rate = check_res.sample_rate
+        self.stim_duration = None
         return self
 
     def __iter__(self):
@@ -196,41 +210,46 @@ class PlayBack:
         return self.cue_locations[self.stimulus]
 
     async def play(self, stim=None):
+
         if stim is None:
             stim = self.stimulus
+        logger.debug(f"Playback of {stim} requested")
 
-        pub_confirmation = asyncio.create_task(
+        play_result = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda pub: (pub.audio_id == stim) & (pub.playback == PBState.PLAYING),
-                  failure=lambda i: pub_err("sound-alsa") if not i else None,
-                  timeout=100)
+                  caught=lambda pub: (pub.audio_id == stim) & (pub.playback == PlayBack.PLAYING),
+                  failure=lambda i: pub_err("audio-playback") if not i else None,
+                  timeout=TIMEOUT)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'audio_id': stim, 'playback': PBState.PLAYING}
+                                  body={'audio_id': stim, 'playback': PlayBack.PLAYING}
                                   )
         await req.send()
-        await pub_confirmation
+        _, pub, _ = await play_result
+        frame_count = pub.frame_count
+
+        self.stim_duration = frame_count/self.sample_rate
         self.playing = True
 
         completion = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda pub: (pub.playback == PBState.STOPPED),
+                  caught=lambda pub: (pub.playback == PlayBack.STOPPED),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
-                  timeout=6000)
+                  timeout=self.stim_duration+TIMEOUT)
         )
-        return completion
+        return self.stim_duration, completion
 
     async def stop(self, context=None):
         pub_confirmation = asyncio.create_task(
             catch('audio-playback',
-                  lambda pub: (pub.playback == PBState.STOPPED),
+                  lambda pub: (pub.playback == PlayBack.STOPPED),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=100)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'playback': PBState.STOPPED}
+                                  body={'playback': PlayBack.STOPPED}
                                   )
         await req.send()
         await pub_confirmation

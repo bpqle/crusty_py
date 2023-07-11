@@ -1,4 +1,4 @@
-from lib.component_protos import decide_pb2 as dc_pb,\
+from .generator_hex import decide_pb2 as dc_pb,\
     peckboard_pb2 as pb_pb, stepper_motor_pb2 as sm_pb, \
     sound_alsa_pb2 as sa_pb, house_light_pb2 as hl_pb
 import google.protobuf.any_pb2 as _any
@@ -19,7 +19,7 @@ class Component:
             self.component = self.StepperMotor(meta_type, data)
         elif component == "peck-keys":
             self.component = self.PeckKeys(meta_type, data)
-        elif component == "sound-alsa":
+        elif component == "audio-playback":
             self.component = self.SoundAlsa(meta_type, data)
         else:
             logger.error(f"Unrecognized/Unspecified Component Name {component}")

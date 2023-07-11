@@ -1,9 +1,8 @@
 import asyncio
 import logging
 import yaml
-import json
 import aiohttp
-
+import sys
 logger = logging.getLogger(__name__)
 
 
@@ -55,5 +54,4 @@ async def slack(msg, usr=None):
         logger.info(f"Slacked user, response: {reply}")
     except Exception as e:
         logger.warning(f"Slack Error: {e}")
-
     return

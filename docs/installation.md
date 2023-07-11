@@ -8,17 +8,11 @@ can get you an outdated version that compiles .py files that can't be read by th
 The best guarantee is getting the v22.2 release from https://github.com/protocolbuffers/protobuf/releases used to compile these files.
 You can download a pre-compiled `protoc` and place the files in the respective locations (`/bin/protoc` goes to `/usr/bin/protoc` and `/include/*` goes in `/usr/local/include/`)
 
-usually
 All proto files can be compiled at once using
 ```
- protoc -I ./protos --python_betterproto_out=./lib/component_protos ./protos/*.proto
+ protoc -I ./protos --python_out=./lib/generator_hex ./protos/*.proto --pyi_out=./lib/generator_hex
 ```
-Note that we are using `betterproto` for better function naming convention & easier API reference during development. `betterproto` will generate `.py` files without `_pb2` in the field.
-Doing 
-```
- protoc -I ./protos --python_out=./lib/component_protos ./protos/*.proto --pyi_out=./protos
-```
-will instead generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./protos` for class reference.
+This will generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./lib/generator_hex` for class reference.
 Also note that to use `betterproto` generated classes, google import of Any() and Empty() must be changed in the initially generated files:
 From `from .google import protobuf` to `from google.protobuf import any_pb2, empty_pb2`
 

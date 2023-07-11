@@ -1,10 +1,9 @@
 #!/usr/bin/python3
 import os
 import sys
-libpath = os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib/'))
-sys.path.insert(1, libpath)
-from lib.device import *
-from lib.control import *
+sys.path.append(os.path.abspath(".."))
+from lib.engine import *
+from lib.inform import *
 import asyncio
 import logging
 import argparse
@@ -27,26 +26,32 @@ args = p.parse_args()
 
 async def main():
     context = zmq.Context()
-
+    # Check status of decide-rs
+    bg = asyncio.create_task(stayin_alive(address=HOSTNAME, user=args.user))
+    # Start logging
     await lincoln(log=f"{args.birdID}_{__exp__}.log")
-
+    # House-lights
     logging.info("Lights.py initiated")
     light = await Sun.spawn(interval=300)
     lightyear = asyncio.create_task(light.cycle())
+
     await slack(f"lights.py initiated on {HOSTNAME}", usr=args.user)
+
     if args.feed:
         logger.info(f"Feeding requested at intervals of {args.feed_duration} ms. Setting parameters.")
         await set_feeder(args.feed_duration)
-        try:
-            while True:
-                logger.info("Feeding.")
-                await feed(args.feed_duration)
-                await asyncio.sleep(args.feed_interval/1000)  # sleep in seconds
-        except KeyboardInterrupt:
-            await slack("PyCrust Lights is shutting down", usr=args.user)
+        while True:
+            logger.info("Feeding.")
+            await feed(args.feed_duration)
+            await asyncio.sleep(args.feed_interval / 1000)  # sleep in seconds
     else:
-        await lightyear
+        asyncio.gather(lightyear, bg)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.error("SIGNINT detected. Shutting down")
+        asyncio.run(slack("PyCrust Lights is shutting down", usr=args.user))
+

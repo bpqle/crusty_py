@@ -2,13 +2,11 @@ import asyncio
 import zmq
 import zmq.asyncio
 from enum import Enum
-from apparatus import Component
-from lib.component_protos import decide_pb2 as dc_db
-from control import *
+from lib.generator_hex import decide_pb2 as dc_db
 import logging
 import time
-from errata import *
-import aiohttp
+from .inform import *
+from .decrypt import Component
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +26,7 @@ class Request:
     @classmethod
     async def spawn(cls, request_type: str, component: str, body=None):
         self = Request()
-        logger.debug(f"{component} - {request_type} - Initiating Request.")
+        logger.debug(f"{request_type} - {component} Initiating Request.")
         if request_type in ["SetParameters", "GetParameters"]:
             body_encode = Component('param', component, data=body)
             request = await body_encode.to_req()
@@ -36,31 +34,31 @@ class Request:
             body_encode = Component('state', component, data=body)
             request = await body_encode.to_req()
         else:
-            logger.error(f"Unsupported Request Type {request_type}")
-            raise "HEE HEE HOO HOO"
+            logger.error(f"Unsupported Request Type {request_type} for {component}")
+            raise
         self.request_type = request_type
         self.type_encode = RequestType[request_type].value.to_bytes(2, 'little')
         self.component = component
         self.body = request.SerializeToString()
-        logger.debug(f" request - {self.request_type} - Req Serialized to String")
+        logger.debug(f"{request_type} - {component} Req Serialized to String")
         return self
 
-    async def send(self, context=None):
+    async def send(self, timeout=TIMEOUT):
         multi_msg = [DECIDE_VERSION, self.type_encode, self.body]
         if self.component is not None:
             multi_msg.append(self.component.encode('utf-8'))
 
-        ctx = context or zmq.asyncio.Context.instance()
+        ctx = zmq.asyncio.Context.instance()
         req_sock = ctx.socket(zmq.REQ)
         req_sock.connect(REQ_ENDPOINT)
-        logger.debug(f" request - {self.request_type} - Request Socket Created")
+        logger.debug(f"{self.request_type} - {self.component} Request Socket Created")
         await req_sock.send_multipart(multi_msg)
-        logger.debug(f" request - {self.request_type} - Request sent, awaiting reply")
+        logger.debug(f"{self.request_type} - {self.component}  Request sent, awaiting reply")
 
-        poll_res = await req_sock.poll(TIMEOUT)
+        poll_res = await req_sock.poll(timeout)
         if poll_res == zmq.POLLIN:
             *dc, reply = await req_sock.recv_multipart()
-            logger.debug(f" request - {self.request_type} - Reply received '{reply}'")
+            logger.debug(f" {self.request_type} - {self.component}  Reply received '{reply}'")
             if dc[0] != DECIDE_VERSION:
                 logger.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
 
@@ -68,24 +66,38 @@ class Request:
             rep_template = dc_db.Reply()
             rep_template.ParseFromString(reply)
             result = rep_template.WhichOneof('result')
-            logger.debug(f"RESULT OF WHICH ONE OF is {result}")
+            logger.debug(f" {self.request_type} - {self.component}  Reply parsed as {result}")
             if result == 'ok':
                 return
             elif result == 'error':
-                raise rep_template.error
+                logger.error(f"Reply error from decide-rs: {rep_template.result}")
             elif result == 'params':  # decode params
                 any_params = rep_template.params
                 part = Component('param', self.component)
                 params = await part.from_any(any_params)
                 return params
         else:  # timeout awaiting response
-            rep_err(comp=self.component, e=TimeoutError)
+            logger.error(f"{self.request_type} - {self.component}"
+                         f" Timed out after {timeout}ms awaiting response from decide-rs")
+
+
+async def stayin_alive(**kwargs):
+    ctx = zmq.asyncio.Context.instance()
+    while True:
+        try:
+            ctx.socket(zmq.PUB).bind(PUB_ENDPOINT)
+        except:
+            continue
+        else:
+            logger.error("Client was able to bind to PUB_ENDPOINT, decide-rs may be unresponsive")
+            await slack(f"Decide-rs unresponsive on {kwargs['address']}, shutting down client", usr=kwargs['user'])
+            raise
 
 
 # Await state change from component with optional timeout
-# If caught returns True, immediately go to advance
-# If timeout, also return
-async def catch(components, caught, raised=None, timeout=None, **kwargs):
+# If caught returns True or timeout occurs, record time and return with msg if available
+# If failure is specified, will call the function upon timeout
+async def catch(components, caught, failure=None, timeout=None, **kwargs):
     ctx = zmq.asyncio.Context.instance()
     poller = zmq.asyncio.Poller()
     if isinstance(components, str):
@@ -115,22 +127,24 @@ async def catch(components, caught, raised=None, timeout=None, **kwargs):
                     state, comp = topic[0].decode("utf-8").split("/")
                     component = Component(state, comp)
                     tstamp, state_msg = await component.from_pub(msg)
-                    func_res = func(state_msg)
-                    if func_res:
+                    if func(state_msg):
                         end = time.time()
                         timer = end - start
                         message = state_msg
                         interrupted = True
+                        return
+                    else:
+                        continue
 
+    start = time.time()
     if timeout is not None:
-        start = time.time()
         try:
             await asyncio.wait_for(test(poller, caught), timeout)
         except TimeoutError:
             message = None
             timer = timeout
-            if raised is not None:
-                raised(interrupted)
+            if failure is not None:
+                failure(interrupted)
     else:
         await test(poller, caught)
         timer = None
