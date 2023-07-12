@@ -7,11 +7,10 @@ from lib.inform import *
 from google.protobuf.json_format import MessageToDict
 import argparse
 import asyncio
-import time
 import logging
 import random
 
-__exp__ = 'gng'
+__name__ = 'gng'
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -39,6 +38,9 @@ args = p.parse_args()
 
 
 state = {
+    'subject': args.birdID,  # logged
+    'experiment': args.config,  # logged
+    'name': __name__,  # logged
     'trial': 0,  # logged
     'result': None,  # logged
     'correct': False,  # logged
@@ -48,16 +50,13 @@ state = {
     'stimulus': None,  # logged
 }
 params = {
-    'subject': args.birdID,  # logged
     'user': args.user,
-    'experiment': args.config,  # logged
-    'name': __exp__,  # logged
     'active': True,
     'resp_window': args.response_duration,
     'feed_duration': args.feed_duration,
     'punish_duration': args.lightsout_duration,
     'max_corrections': args.max_corrections,
-    'rand_replace': args.replace,
+    'replace': args.replace,
     'correction_timeout': args.correction_timeout,
     'cue_frequency': args.cue_frequency,
     'cue_color': args.cue_color,
@@ -68,7 +67,6 @@ params = {
 
 
 async def await_init():
-
     def peck_init(key_state):
         pecked = MessageToDict(key_state,
                                preserving_proto_field_name=True)
@@ -106,9 +104,9 @@ async def await_respond(pb, stim_data, correction):
         return response, rtime
 
 
-async def complete(stim_data, correction, stim, response, rtime):
+async def complete(playback, stim_data, correction, response, rtime):
     # Determine outcome
-    outcome = stim_data['response'][response]
+    outcome = stim_data['responses'][response]
     rand = random.random()
     if outcome['correct']:
         if outcome['p_reward'] >= rand:
@@ -126,19 +124,21 @@ async def complete(stim_data, correction, stim, response, rtime):
         'response': response,
         'rtime': rtime,
         'correct': outcome['correct'],
-        'correction': state.get('correction'),
+        'correction': correction,
         'stimulus': stim_data['name']
     })
-    logger.info(state)
+    logger.info(f"Trial {state['trial']} completed. Logging trial.")
+    await log_trial(msg=state.copy())
     # Advance
     if (response == 'timeout') & params['correction_timeout']:
-        logger.debug("Response timeout, next trial is correction trial.")
+        correction += 1
+        logger.debug("Response was timeout, next trial is correction trial.")
     elif (response != 'timeout') & (not outcome['correct']) & (correction < params['max_corrections']):
         correction += 1
         logger.debug("Next Trial correction.")
     else:
         correction = 0
-        stim_data = next(stim).copy()
+        stim_data = playback.next()
     return stim_data, correction
 
 
@@ -153,27 +153,31 @@ async def correction_check(correction):
 
 async def main():
     context = zmq.Context()
-    await lincoln(log=f"{args.birdID}_{__exp__}.log")
+    # Check status of decide-rs
+    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
+    # Start logging
+    await lincoln(log=f"{args.birdID}_{__name__}.log")
     logging.info("GNG.py initiated")
 
     light = await Sun.spawn(interval=300)
-    lightyear = asyncio.create_task(light.cycle())
+    asyncio.create_task(light.cycle())
 
-    pb = await JukeBox.spawn(args.config)
-    stim = iter(pb)
+    playback = await JukeBox.spawn(args.config,
+                                   shuffle=True,
+                                   replace=params['replace'])
     correction = 0
-    stim_data = next(stim).copy()
+    stim_data = playback.next()
 
-    await slack(f"GNG.py initiated on {HOSTNAME}", usr=args.user)
+    await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
 
     while True:
         await await_init()
-        await present_stim(pb, stim_data)
-        response, rtime = await await_respond(pb, stim_data, correction)
-        stim_data, correction = await complete(stim_data, correction, stim, response, rtime)
+        await present_stim(playback, stim_data)
+        response, rtime = await await_respond(playback, stim_data, correction)
+        stim_data, correction = await complete(playback, stim_data, correction, response, rtime)
 
 
-if __name__ == "__main__":
+if __name__ == "__gng__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

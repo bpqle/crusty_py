@@ -1,10 +1,9 @@
 import asyncio
 import logging
-import zmq
 import zmq.asyncio
 import json
 import numpy as np
-from lib.generator_hex.sound_alsa_pb2.SaState import PlayBack
+from lib.generator_hex.sound_alsa_pb2.SaState.PlayBack import PLAYING, STOPPED, NEXT
 from .errata import *
 from .contact import *
 
@@ -67,6 +66,11 @@ async def cue(pos, color):
 
 
 class Sun:
+    def __init__(self):
+        self.interval = 0
+        self.brightness = 0
+        self.daytime = False
+
     @classmethod
     async def spawn(cls, interval):
         logger.debug("Sun spawning")
@@ -106,7 +110,6 @@ class Sun:
 
 
 async def blip(brightness, interval):
-    ctx = zmq.asyncio.Context.instance()
     logger.debug("Manually changing house lights")
     asyncio.create_task(
         catch('house-light',
@@ -139,13 +142,17 @@ async def blip(brightness, interval):
 
 class JukeBox:
     def __init__(self):
+        self.playing = False
+        self.stimulus = None
         self.stim_duration = None
-        self.playing = None
         self.stim_data = None
         self.sample_rate = None
+        self.ptr = None
+        self.shuffle = True
+        self.replace = False
 
     @classmethod
-    async def spawn(cls, conf_fs, shuffle=True):
+    async def spawn(cls, conf_fs, shuffle=True, replace=False):
         logger.info("Spawning Playback Machine")
         self = JukeBox()
         with open(conf_fs) as file:
@@ -170,10 +177,6 @@ class JukeBox:
             self.cue_locations[stim['name']] = cue_loc
             playlist.append(np.repeat(i, stim['frequency']))
 
-        self.playlist = np.array(playlist).flatten()
-        if shuffle:
-            np.random.shuffle(self.playlist)
-
         logger.debug("Requesting stimuli directory change")
         params = await Request.spawn(request_type="SetParameters",
                                      component='audio-playback',
@@ -188,20 +191,32 @@ class JukeBox:
         check_res = await dir_check.send(timeout=10000)
         if check_res.audio_dir != cf['stimulus_root']:
             logger.error(f"Auditory folder mismatch: got {check_res.audio_dir} expected {cf['stimulus_root']}")
+
         self.sample_rate = check_res.sample_rate
-        self.stim_duration = None
+        self.playlist = np.array(playlist).flatten()
+        if shuffle:
+            np.random.shuffle(self.playlist)
+        self.ptr = iter(self.playlist)
+        self.replace = replace
         return self
 
-    def __iter__(self):
-        self.iter = iter(self.playlist)
-        self.playing = False
-        self.stimulus = None
-        return self
+    def next(self):
+        if not self.replace:
+            try:
+                item = next(self.ptr)
+            except StopIteration:
+                if self.shuffle:
+                    np.random.shuffle(self.playlist)
+                self.ptr = iter(self.playlist)
+                item = next(self.ptr)
+        else:
+            if self.shuffle:
+                np.random.shuffle(self.playlist)
+            self.ptr = iter(self.playlist)
+            item = next(self.ptr)
 
-    def __next__(self):
-        item = next(self.iter)
         self.stimulus = self.stim_data[item]['name']
-        return self.stim_data[item]
+        return self.stim_data[item].copy()
 
     async def current_cue(self):
         if self.stimulus is None:
@@ -210,20 +225,19 @@ class JukeBox:
         return self.cue_locations[self.stimulus]
 
     async def play(self, stim=None):
-
         if stim is None:
             stim = self.stimulus
         logger.debug(f"Playback of {stim} requested")
 
         play_result = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda pub: (pub.audio_id == stim) & (pub.playback == PlayBack.PLAYING),
+                  caught=lambda msg: (msg.audio_id == stim) & (pub.playback == PLAYING),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=TIMEOUT)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'audio_id': stim, 'playback': PlayBack.PLAYING}
+                                  body={'audio_id': stim, 'playback': PLAYING}
                                   )
         await req.send()
         _, pub, _ = await play_result
@@ -234,7 +248,7 @@ class JukeBox:
 
         completion = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda pub: (pub.playback == PlayBack.STOPPED),
+                  caught=lambda msg: (msg.playback == STOPPED),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=self.stim_duration+TIMEOUT)
         )
@@ -243,13 +257,13 @@ class JukeBox:
     async def stop(self, context=None):
         pub_confirmation = asyncio.create_task(
             catch('audio-playback',
-                  lambda pub: (pub.playback == PlayBack.STOPPED),
+                  lambda msg: (msg.playback == STOPPED),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=100)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'playback': PlayBack.STOPPED}
+                                  body={'playback': STOPPED}
                                   )
         await req.send()
         await pub_confirmation

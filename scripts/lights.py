@@ -26,7 +26,7 @@ args = p.parse_args()
 async def main():
     context = zmq.Context()
     # Check status of decide-rs
-    bg = asyncio.create_task(stayin_alive(address=HOSTNAME, user=args.user))
+    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
     await lincoln(log=f"{args.birdID}_{__exp__}.log")
     # House-lights
@@ -34,7 +34,7 @@ async def main():
     light = await Sun.spawn(interval=300)
     lightyear = asyncio.create_task(light.cycle())
 
-    await slack(f"lights.py initiated on {HOSTNAME}", usr=args.user)
+    await slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
 
     if args.feed:
         logger.info(f"Feeding requested at intervals of {args.feed_duration} ms. Setting parameters.")
