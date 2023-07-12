@@ -10,7 +10,6 @@ import argparse
 import zmq
 
 __exp__ = 'lights'
-HOSTNAME = os.uname()[1]
 
 p = argparse.ArgumentParser()
 p.add_argument("user")

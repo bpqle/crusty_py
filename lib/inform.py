@@ -3,6 +3,8 @@ import logging
 import yaml
 import aiohttp
 import sys
+import time
+import os
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +18,8 @@ REQ_ENDPOINT = config['REQ_ENDPOINT']
 PUB_ENDPOINT = config['PUB_ENDPOINT']
 TIMEOUT = config['TIMEOUT']
 SLACK_HOOK = config['SLACK_HOOK']
+DJANGO_UNBOUND = config['DJANGO_HOST']
+HOSTNAME = os.uname()[1]
 
 
 async def lincoln(log):
@@ -28,10 +32,42 @@ async def lincoln(log):
         level=logging.DEBUG,
         handlers=[filer, streamer]
     )
-    logger.debug(f"Logging to file {log}")
+    logger.debug(f"Logging to file {log}. Connecting to DecideAPI")
+
+    async with aiohttp.ClientSession as session:
+        try:
+            async with session.get(urls=f"{DJANGO_UNBOUND}/info/",
+                                   ) as result:
+                logger.debug("Response received from DecideAPI")
+                reply = await result.json()
+                if result.status != 200:
+                    logger.error('GET Result Error from getting DecideAPI info:', reply)
+                elif ('api_version' not in reply) or (reply.api_version is None):
+                    logger.error('Unexpected reply from DecideAPI info:', reply)
+                else:
+                    logger.info("Connected to DecideAPI.")
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Connection Error Trying to Log Info:', str(e))
+
+    return
 
 
-async def log_trial(state):
+async def log_trial(msg: dict):
+    msg['addr'] = HOSTNAME
+    msg['time'] = time.time()
+    async with aiohttp.ClientSession as session:
+        try:
+            async with session.post(url=f"{DJANGO_UNBOUND}/trials/",
+                                    json=msg,
+                                    headers={'Content-Type': 'application/json'}
+                                    ) as result:
+                if result.status != 200:
+                    reply = await result.json()
+                    logger.error('POST Result Error from contacting DecideAPI:', reply)
+                else:
+                    logger.debug("Trial logged to DecideAPI.")
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Connection Error Trying to Log Info:', str(e))
     return
 
 
@@ -48,9 +84,9 @@ async def slack(msg, usr=None):
         async with aiohttp.ClientSession as session:
             async with session.post(url=SLACK_HOOK,
                                     json=slack_message,
-                                    headers={'Content-Type': 'application`json'}
-                                    ) as rep:
-                reply = await rep.json()
+                                    headers={'Content-Type': 'application/json'}
+                                    ) as result:
+                reply = await result.json()
         logger.info(f"Slacked user, response: {reply}")
     except Exception as e:
         logger.warning(f"Slack Error: {e}")

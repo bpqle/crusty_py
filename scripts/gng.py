@@ -12,7 +12,6 @@ import logging
 import random
 
 __exp__ = 'gng'
-HOSTNAME = os.uname()[1]
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -40,17 +39,19 @@ args = p.parse_args()
 
 
 state = {
-    'trial': 0,
-    'phase': None,
-    'result': None,
-    'correct': False,
-    'response': None,
-    'correction': 0,
-    'stimulus': None,
+    'trial': 0,  # logged
+    'result': None,  # logged
+    'correct': False,  # logged
+    'response': None,  # logged
+    'rtime': None,  # logged
+    'correction': 0,  # logged
+    'stimulus': None,  # logged
 }
 params = {
-    'subject': args.birdID,
+    'subject': args.birdID,  # logged
     'user': args.user,
+    'experiment': args.config,  # logged
+    'name': __exp__,  # logged
     'active': True,
     'resp_window': args.response_duration,
     'feed_duration': args.feed_duration,
