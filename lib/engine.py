@@ -153,7 +153,7 @@ class JukeBox:
         self.replace = False
 
     @classmethod
-    async def spawn(cls, conf_fs, shuffle=True, replace=False):
+    async def spawn(cls, conf_fs, shuffle=True, replace=False, get_cues=True):
         logger.info("Spawning Playback Machine")
         self = JukeBox()
         with open(conf_fs) as file:
@@ -173,9 +173,10 @@ class JukeBox:
                 if total > 1:
                     logger.error(f"Reward/Punish Percentage Exceed 1.0 for {action} in {stim['name']}")
                     raise
-                if 'p_reward' in consq:
+                if get_cues and ('p_reward' in consq):
                     cue_loc = peck_parse(action, 'l')
-            self.cue_locations[stim['name']] = cue_loc
+            if get_cues:
+                self.cue_locations[stim['name']] = cue_loc
             playlist.append(np.repeat(i, stim['frequency']))
 
         logger.debug("Requesting stimuli directory change")
