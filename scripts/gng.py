@@ -52,7 +52,7 @@ state = {
 params = {
     'user': args.user,
     'active': True,
-    'resp_window': args.response_duration,
+    'response_duration': args.response_duration,
     'feed_duration': args.feed_duration,
     'punish_duration': args.lightsout_duration,
     'max_corrections': args.max_corrections,
@@ -62,15 +62,17 @@ params = {
     'cue_color': args.cue_color,
     'feed_delay': args.feed_delay,
     'min_iti': 100,
-    'init_key': f"peck_{args.init_position}",
+    'init_key': args.init_position,
 }
 
 
 async def await_init():
+    await_input = peck_parse(params['init_key'], 'r')
+
     def peck_init(key_state):
         pecked = MessageToDict(key_state,
                                preserving_proto_field_name=True)
-        if (params['init_key'] in pecked) and (pecked[params['init_key']]):
+        if (await_input in pecked) and (pecked[await_input]):
             return True
     await catch('peck-keys',
                 caught=peck_init)
@@ -86,7 +88,8 @@ async def await_respond(pb, stim_data, correction):
     response = 'timeout'
 
     def resp_check(key_state):
-        pecked = key_state.to_dict()
+        pecked = MessageToDict(key_state,
+                               preserving_proto_field_name=True)
         for k, v in pecked.items():
             if v & (k in stim_data):
                 return True
@@ -94,17 +97,18 @@ async def await_respond(pb, stim_data, correction):
 
     responded, msg, rtime = await catch('peck-keys',
                                         caught=resp_check,
-                                        timeout=params['response-window'])
+                                        timeout=params['response_duration'])
     if not responded:
         return response, None
     else:
-        for key, val in msg.to_dict().items():
+        for key, val in MessageToDict(msg, preserving_proto_field_name=True).items():
             if val & (key in stim_data):
                 response = key
         return response, rtime
 
 
 async def complete(playback, stim_data, correction, response, rtime):
+    await cue(playback.current_cue(), 'off')
     # Determine outcome
     outcome = stim_data['responses'][response]
     rand = random.random()

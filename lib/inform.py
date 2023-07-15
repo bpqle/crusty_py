@@ -105,3 +105,21 @@ async def slack(msg, usr=None):
     except Exception as e:
         logger.warning(f"Slack Error: {e}")
     return
+
+
+# This function maintains sanity
+def peck_parse(phrase, mode):
+    if mode in ['led', 'l', 'leds']:
+        if 'left' in phrase:
+            return 'peck_led_left'
+        elif 'right' in phrase:
+            return 'peck_led_right'
+        elif 'center' in phrase:
+            return 'peck_led_center'
+    elif mode in ['response', 'r']:
+        if 'left' in phrase:
+            return 'peck_left'
+        elif 'right' in phrase:
+            return 'peck_right'
+        elif 'center' in phrase:
+            return 'peck_center'

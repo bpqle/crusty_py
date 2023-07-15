@@ -147,7 +147,6 @@ async def catch(components, caught, failure=None, timeout=None, **kwargs):
                 failure(interrupted)
     else:
         await test(poller, caught)
-        timer = None
 
     return interrupted, message, timer
 

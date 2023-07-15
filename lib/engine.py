@@ -6,6 +6,7 @@ import numpy as np
 from lib.generator_hex.sound_alsa_pb2.SaState.PlayBack import PLAYING, STOPPED, NEXT
 from .errata import *
 from .contact import *
+from .inform import peck_parse
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,14 @@ async def set_feeder(duration, **kwargs):
         logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
 
-async def feed(duration, **kwargs):
+async def feed(duration, delay=0):
     logger.debug('feed() called, requesting stepper motor')
+    await asyncio.sleep(delay)
     start = asyncio.create_task(
         catch('stepper-motor',
               caught=lambda pub: pub.running,
               failure=lambda i: pub_err("stepper-motor") if not i else None,
-              timeout=TIMEOUT,
-              **kwargs)
+              timeout=TIMEOUT)
     )
     req = await Request.spawn(request_type="ChangeState",
                               component='stepper-motor',
@@ -44,14 +45,14 @@ async def feed(duration, **kwargs):
     await catch('stepper-motor',
                 caught=lambda pub: not pub.running,
                 failure=lambda i: pub_err("stepper-motor") if not i else None,
-                timeout=duration + TIMEOUT,
-                **kwargs)
+                timeout=duration + TIMEOUT)
     logger.debug('motor stop confirmed by decide-rs')
     return
 
 
-async def cue(pos, color):
-    logger.debug('Requesting cue led')
+async def cue(loc, color):
+    pos = peck_parse(loc, mode='l')
+    logger.debug(f'Requesting cue {pos}')
     asyncio.create_task(
         catch(pos,
               caught=lambda pub: pub.led_state == color,
@@ -173,7 +174,7 @@ class JukeBox:
                     logger.error(f"Reward/Punish Percentage Exceed 1.0 for {action} in {stim['name']}")
                     raise
                 if 'p_reward' in consq:
-                    cue_loc = action
+                    cue_loc = peck_parse(action, 'l')
             self.cue_locations[stim['name']] = cue_loc
             playlist.append(np.repeat(i, stim['frequency']))
 
