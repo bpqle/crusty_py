@@ -36,7 +36,6 @@ async def forth():
         #print("Awaiting poll")
         poll_res = await poller.poll(timeout=1000)  # ms
         print(poll_res)
-        if poller,pollin
         await asyncio.sleep(1)
 
 

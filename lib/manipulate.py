@@ -67,47 +67,6 @@ async def cue(loc, color):
 
 
 class Sun:
-    def __init__(self):
-        self.interval = 0
-        self.brightness = 0
-        self.daytime = True
-
-    @classmethod
-    async def spawn(cls, interval):
-        logger.debug("Sun spawning")
-        self = Sun()
-        self.brightness = 0
-        self.daytime = False
-        self.interval = interval
-        return self
-
-    async def cycle(self, **kwargs):
-        logger.debug("Sun cycle initiating")
-        param_set = await Request.spawn(request_type="SetParameters",
-                                        component='house-light',
-                                        body={'clock_interval': self.interval}
-                                        )
-        await param_set.send()
-
-        interval_check = await Request.spawn(request_type="GetParameters",
-                                             component='house-light',
-                                             body=None)
-        check_res = await interval_check.send()
-        if check_res.clock_interval != self.interval:
-            logger.error(f"House-Light Clock Interval not set to {self.interval},"
-                         f" got {check_res.clock_interval}")
-
-        def light_update(msg):
-            self.brightness = msg.brightness
-            self.daytime = msg.daytime
-            return True
-
-        while True:
-            logger.debug('new house light cycle, awaiting update')
-            await catch('house-light',
-                        caught=light_update,
-                        failure=lambda i: pub_err("house-light") if not i else None,
-                        timeout=self.interval + 1)
 
 
 async def blip(brightness, interval):

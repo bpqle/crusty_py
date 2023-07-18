@@ -3,3 +3,4 @@
 poetry.lock
 lib/__pycache__/
 protos/__pycache__/
+lib/generator_hex/__pycache__/
