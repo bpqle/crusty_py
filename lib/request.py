@@ -87,6 +87,7 @@ async def stayin_alive(**kwargs):
         try:
             ctx.socket(zmq.PUB).bind(PUB_ENDPOINT)
         except:
+            await asyncio.sleep(60)
             continue
         else:
             logger.error("Client was able to bind to PUB_ENDPOINT, decide-rs may be unresponsive")

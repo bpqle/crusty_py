@@ -2,12 +2,7 @@ syntax = "proto3";
 
 message SaState {
   string audio_id = 1;
-  enum PlayBack {
-    STOPPED = 0;
-    PLAYING = 1;
-    NEXT = 2;
-  }
-  PlayBack playback = 2;
+  uint32 playback = 2;
   uint32 frame_count = 3;
 }
 

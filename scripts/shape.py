@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.append(os.path.abspath(".."))
-from lib.engine import *
+from lib.manipulate import *
 from lib.inform import *
 from google.protobuf.json_format import MessageToDict
 import argparse
@@ -64,7 +64,7 @@ async def main():
     light = await Sun.spawn(interval=300)
     asyncio.create_task(light.cycle())
 
-    if (args.F) or (args.B == 4):
+    if (args.fforward) or (args.block == 4):
         state['block'] = 4
     else:
         state['block'] = args.block
@@ -72,7 +72,7 @@ async def main():
     shaping = False
     while shaping:
         if not light.daytime:
-            await asyncio.sleep(300) # seconds
+            await asyncio.sleep(300)  # seconds
             continue
         if state['block'] == 0:
             await block0_feeder()
@@ -95,7 +95,7 @@ async def block0_feeder():
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await feed(params['feed_duration'], delay=params['feed_delay'])
+    await feed(delay=params['feed_delay'])
     state.update({
         'trial': state.get('trial', 0) + 1,
     })
@@ -108,6 +108,7 @@ async def block0_feeder():
             'trial': 0,
             'block': state.get('block', 0) + 1,
         })
+
 
 async def block1_patience():
     iti_var = 60
@@ -135,7 +136,7 @@ async def block1_patience():
 
     # feed regardless of response
     await cue(cue_pos, 'off')
-    await feed(params['feed_duration'], delay=params['feed_delay'])
+    await feed(delay=params['feed_delay'])
 
     if responded:
         logger.info("Bird pecked during block 1! Immediately advancing to block 2")
@@ -163,11 +164,12 @@ async def block1_patience():
             'block': state.get('block', 0) + 1,
         })
 
+
 async def block2_peck():
     iti_var = 15
     iti = int(random.random() * iti_var)
-    await_input = peck_parse(params['init_position'] ,'r')
-    cue_pos = peck_parse(params['init_position'] ,'l')
+    await_input = peck_parse(params['init_position'], 'r')
+    cue_pos = peck_parse(params['init_position'], 'l')
 
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
@@ -188,8 +190,8 @@ async def block2_peck():
 
     # feed regardless of response
     await cue(await_input, 'off')
-    if responded: # should always be True in this block
-        await feed(params['feed_duration'], delay=params['feed_delay'])
+    if responded:  # should always be True in this block
+        await feed(delay=params['feed_delay'])
         state.update({
             'trial': state.get('trial', 0) + 1,
             'result': 'feed',
@@ -246,7 +248,7 @@ async def block3_extend():
                                         timeout=None)
     await cue(second_cue, 'off')
 
-    await feed(params['feed_duration'], delay=params['feed_delay'])
+    await feed(delay=params['feed_delay'])
 
     state.update({
         'trial': state.get('trial', 0) + 1,
@@ -271,7 +273,7 @@ async def block4_auton():
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await_input = peck_parse(params['init_position'] ,'r')
+    await_input = peck_parse(params['init_position'], 'r')
     def resp_check(key_state):
         pecked = MessageToDict(key_state,
                                preserving_proto_field_name=True)
@@ -297,7 +299,7 @@ async def block4_auton():
                                         caught=resp_check,
                                         timeout=None)
 
-    await feed(params['feed_duration'], delay=params['feed_delay'])
+    await feed(delay=params['feed_delay'])
 
     state.update({
         'trial': state.get('trial', 0) + 1,
@@ -314,5 +316,14 @@ async def block4_auton():
                     usr=params['user'])
         logger.info('Shape completed')
 
+
 def pick(group):
     return group[int(random.random() // (1/len(group)))]
+
+
+if __exp__ == 'shape':
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.warning("SIGINT Detected, shutting down.")
+        asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))

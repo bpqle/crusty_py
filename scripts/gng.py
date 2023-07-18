@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.append(os.path.abspath(".."))
-from lib.engine import *
+from lib.manipulate import *
 from lib.inform import *
 from google.protobuf.json_format import MessageToDict
 import argparse
@@ -115,7 +115,7 @@ async def complete(playback, stim_data, correction, response, rtime):
     if outcome['correct']:
         if outcome['p_reward'] >= rand:
             await asyncio.sleep(params['feed_delay'])
-            await feed(params['feed_duration'])
+            await feed()
         result = 'feed'
     else:
         if outcome['p_punish'] >= rand:
@@ -161,17 +161,18 @@ async def main():
     bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
     await lincoln(log=f"{args.birdID}_{__name__}.log")
-    logging.info("GNG.py initiated")
 
     light = await Sun.spawn(interval=300)
     asyncio.create_task(light.cycle())
 
+    await set_feeder(duration=params['feed_duration'])
     playback = await JukeBox.spawn(args.config,
                                    shuffle=True,
                                    replace=params['replace'])
     correction = 0
     stim_data = playback.next()
 
+    logging.info("GNG.py initiated")
     await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
 
     while True:

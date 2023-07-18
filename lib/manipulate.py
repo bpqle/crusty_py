@@ -5,13 +5,13 @@ import json
 import numpy as np
 from lib.generator_hex.sound_alsa_pb2.SaState.PlayBack import PLAYING, STOPPED, NEXT
 from .errata import *
-from .contact import *
+from .request import *
 from .inform import peck_parse
 
 logger = logging.getLogger(__name__)
 
 
-async def set_feeder(duration, **kwargs):
+async def set_feeder(duration):
     logger.debug("Setting feed duration")
     param_set = await Request.spawn(request_type="SetParameters",
                                     component='stepper-motor',
@@ -27,7 +27,7 @@ async def set_feeder(duration, **kwargs):
         logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
 
-async def feed(duration, delay=0):
+async def feed(delay=0):
     logger.debug('feed() called, requesting stepper motor')
     await asyncio.sleep(delay)
     start = asyncio.create_task(
@@ -45,7 +45,7 @@ async def feed(duration, delay=0):
     await catch('stepper-motor',
                 caught=lambda pub: not pub.running,
                 failure=lambda i: pub_err("stepper-motor") if not i else None,
-                timeout=duration + TIMEOUT)
+                timeout=TIMEOUT)
     logger.debug('motor stop confirmed by decide-rs')
     return
 
@@ -70,7 +70,7 @@ class Sun:
     def __init__(self):
         self.interval = 0
         self.brightness = 0
-        self.daytime = False
+        self.daytime = True
 
     @classmethod
     async def spawn(cls, interval):
