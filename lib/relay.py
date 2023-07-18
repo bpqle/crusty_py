@@ -28,6 +28,8 @@ class Zim:
 
         persistent = zmq.asyncio.Poller()
         self.persistent_comp = ['house-light','peck-keys']
+        self.peck_trigger = asyncio.Event()
+
         for c in self.persistent_comp:
             if c in self.transient_comps:
                 self.transient_comps.remove(c)
@@ -49,9 +51,9 @@ class Zim:
             poll_result = await persistent.poll(timeout=1000)
             for (sock, flag) in poll_result:
                 if flag == zmq.POLLIN:
-                    await self.process_persistent(sock)
+                    await self.process_persistent(sock, trigger=self.peck_trigger)
 
-    async def process_persistent(self, sock):
+    async def process_persistent(self, sock, trigger):
         *topic, msg = await sock.recv_multipart(zmq.DONTWAIT)
         state, comp = topic[0].decode("utf-8").split("/")
         component = Component(state, comp)
@@ -61,6 +63,10 @@ class Zim:
         if comp == 'house-light':
             self.sun.update(decoded)
         elif comp == 'peck-key':
+            if trigger.is_set():
+                
+                yield decoded
+    def peck_check(self, test):
 
 
 class Sun:
