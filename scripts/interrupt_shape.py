@@ -32,7 +32,6 @@ args = p.parse_args()
 
 state = {
     'subject': args.birdID,  # logged
-    'experiment': args.config,  # logged
     'name': __name__,  # logged
     'trial': 0,  # logged
     'block': 0,  # logged
@@ -58,7 +57,6 @@ async def main():
     await lincoln(log=f"{args.birdID}_{__name__}.log")
 
     light = await Sun.spawn(interval=300)
-    asyncio.create_task(light.cycle())
 
     await set_feeder(duration=params['feed_duration'])
 

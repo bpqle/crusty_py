@@ -13,7 +13,6 @@ All proto files can be compiled at once using
  protoc -I ./protos --python_out=./lib/generator_hex ./protos/*.proto --pyi_out=./lib/generator_hex
 ```
 This will generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./lib/generator_hex` for class reference.
-Also note that to use `betterproto` generated classes, google import of Any() and Empty() must be changed in the initially generated files:
-From `from .google import protobuf` to `from google.protobuf import any_pb2, empty_pb2`
+
 
 ```rsync -av -e ssh --exclude='.*' ./py_crust/ dimmabone:/root/py_crust/```

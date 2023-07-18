@@ -16,7 +16,7 @@ __exp__ = 'shape'
 p = argparse.ArgumentParser()
 p.add_argument("user")
 p.add_argument("birdID")
-p.add_argument("-F", "--ffoward", help="immediately skip to block 4", action='store_true')
+p.add_argument("-F", "--fforward", help="immediately skip to block 4", action='store_true')
 p.add_argument("-B", "--block", help="skip to specific block", action='store', default=0)
 p.add_argument("--color", help="set color of cues",
                choices=['blue', 'red', 'green'], default='blue')
@@ -35,7 +35,6 @@ args = p.parse_args()
 
 state = {
     'subject': args.birdID,  # logged
-    'experiment': args.config,  # logged
     'name': __name__,  # logged
     'trial': 0,  # logged
     'block': 0,  # logged
@@ -59,19 +58,20 @@ async def main():
     bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
 
     await lincoln(log=f"{args.birdID}_{__name__}.log")
-    logging.info("GNG.py initiated")
+    logger.info("shape.py initiated")
 
-    light = await Sun.spawn(interval=300)
-    asyncio.create_task(light.cycle())
+    lights = await Sun.spawn(interval=300)
+    await set_feeder(duration=params['feed_duration'])
 
     if (args.fforward) or (args.block == 4):
         state['block'] = 4
     else:
         state['block'] = args.block
 
-    shaping = False
-    while shaping:
-        if not light.daytime:
+    while True:
+        logger.info(f"Block is {state['block']}")
+        if not lights.daytime:
+            logger.info("Paused")
             await asyncio.sleep(300)  # seconds
             continue
         if state['block'] == 0:
@@ -89,6 +89,7 @@ async def main():
 
 
 async def block0_feeder():
+    logger.info("Staring block 0")
     iti_var = 60
     iti = int(params['iti_min'] + random.random() * iti_var)
 

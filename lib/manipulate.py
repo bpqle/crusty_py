@@ -3,101 +3,126 @@ import logging
 import zmq.asyncio
 import json
 import numpy as np
-from lib.generator_hex.sound_alsa_pb2.SaState.PlayBack import PLAYING, STOPPED, NEXT
 from .errata import *
-from .request import *
-from .inform import peck_parse
+from .relay import Sauron
+from .inform import *
+import yaml
 
 logger = logging.getLogger(__name__)
 
 
-async def set_feeder(duration):
-    logger.debug("Setting feed duration")
-    param_set = await Request.spawn(request_type="SetParameters",
-                                    component='stepper-motor',
-                                    body={'timeout': duration}
-                                    )
-    await param_set.send()
+class Morgoth:
+    def __init__(self):
+        self.messenger = None
 
-    interval_check = await Request.spawn(request_type="GetParameters",
-                                         component='stepper-motor',
-                                         body=None)
-    check_res = await interval_check.send()
-    if check_res.timeout != duration:
-        logger.error(f"Stepper motor timeout parameter not set to {duration}")
+    @classmethod
+    async def spawn(cls, messenger: Sauron):
+        self = Morgoth()
+        self.messenger = messenger
 
+    async def set_feeder(self, duration):
+        logger.debug("Setting feed duration")
+        await self.messenger.request(request_type="SetParameters",
+                                     component='stepper-motor',
+                                     body={'timeout': duration}
+                                     )
 
-async def feed(delay=0):
-    logger.debug('feed() called, requesting stepper motor')
-    await asyncio.sleep(delay)
-    start = asyncio.create_task(
-        catch('stepper-motor',
-              caught=lambda pub: pub.running,
-              failure=lambda i: pub_err("stepper-motor") if not i else None,
-              timeout=TIMEOUT)
-    )
-    req = await Request.spawn(request_type="ChangeState",
-                              component='stepper-motor',
-                              body={'running': True, 'direction': True})
-    await req.send()
-    await start
-    logger.debug('feeding confirmed by decide-rs, awaiting motor stop')
-    await catch('stepper-motor',
-                caught=lambda pub: not pub.running,
-                failure=lambda i: pub_err("stepper-motor") if not i else None,
-                timeout=TIMEOUT)
-    logger.debug('motor stop confirmed by decide-rs')
-    return
+        interval_check = await self.messenger.request(request_type="GetParameters",
+                                                      component='stepper-motor',
+                                                      body=None)
+        if interval_check.timeout != duration:
+            logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
+    async def feed(self, delay=0):
+        logger.debug('feed() called, requesting stepper motor')
+        await asyncio.sleep(delay)
+        await self.messenger.request(request_type="ChangeState",
+                                     component='stepper-motor',
+                                     body={'running': True, 'direction': True})
+        await self.messenger.scry('stepper-motor',
+                                  condition=lambda p: p.running,
+                                  failure=pub_err,
+                                  timeout=TIMEOUT)
+        logger.debug('feeding confirmed by decide-rs, awaiting motor stop')
+        await self.messenger.scry('stepper-motor',
+                                  condition=lambda pub: not pub.running,
+                                  failure=pub_err,
+                                  timeout=TIMEOUT)
+        logger.debug('motor stop confirmed by decide-rs')
+        return
 
-async def cue(loc, color):
-    pos = peck_parse(loc, mode='l')
-    logger.debug(f'Requesting cue {pos}')
-    asyncio.create_task(
-        catch(pos,
-              caught=lambda pub: pub.led_state == color,
-              failure=lambda i: pub_err(pos) if not i else None,
-              timeout=TIMEOUT)
-    )
-    req = await Request.spawn(request_type="ChangeState",
-                              component=pos,
-                              body={'led_state': color})
-    await req.send()
-    return
+    async def cue(self, loc, color):
+        pos = peck_parse(loc, mode='l')
+        logger.debug(f'Requesting cue {pos}')
+        await self.messenger.request(request_type="ChangeState",
+                                     component=pos,
+                                     body={'led_state': color})
+        await self.messenger.scry(pos,
+                                  condition=lambda pub: not pub.running,
+                                  failure=pub_err,
+                                  timeout=TIMEOUT)
+        return
 
+    async def keep_alight(self, interval):
+        self.sun = Sun()
+        await self.messenger.request(request_type="SetParameters",
+                                     component='house-light',
+                                     body={'clock_interval': interval})
+        interval_check = await self.messenger.request(request_type="GetParameters",
+                                                      component='house-light',
+                                                      body=None)
+        if interval_check.clock_interval != interval:
+            logger.error(f"House-Light Clock Interval not set to {interval},"
+                         f" got {interval_check.clock_interval}")
 
-class Sun:
+        while True:
+            self.messenger.scry('house-light', self.sun.update)
+            await asyncio.sleep(10)
 
+    async def blip(self, duration, brightness=0):
+        logger.debug("Manually changing house lights")
+        await self.messenger.request(request_type="ChangeState",
+                                     component='house-light',
+                                     body={'manual': True, 'brightness': brightness})
+        await self.messenger.scry(
+            'house-light',
+            condition=lambda pub: True if pub.brightness == brightness else False,
+            failure=pub_err,
+            timeout=TIMEOUT
+        )
+        logger.debug("Manually changing house lights confirmed by decide-rs.")
 
-async def blip(brightness, interval):
-    logger.debug("Manually changing house lights")
-    asyncio.create_task(
-        catch('house-light',
-              caught=lambda pub: True if pub.brightness == brightness else False,
-              failure=lambda i: pub_err("house-light") if not i else None,
-              timeout=100)
-    )
-    req = await Request.spawn(request_type="ChangeState",
-                              component='house-light',
-                              body={'manual': True, 'brightness': brightness}
-                              )
-    await req.send()
-    logger.debug("Manually changing house lights confirmed by decide-rs.")
-    await asyncio.sleep(interval)
-    logger.debug("Returning house lights to cycle")
-    asyncio.create_task(
-        catch('house-light',
-              lambda pub: not pub.manual,
-              lambda i: pub_err("house-light") if not i else None,
-              timeout=100)
-    )
-    req2 = await Request.spawn(request_type="ChangeState",
+        await asyncio.sleep(duration)
+
+        logger.debug("Returning house lights to cycle")
+        self.messenger.request(request_type="ChangeState",
                                component='house-light',
                                body={'manual': False, 'ephemera': True}
                                )
-    await req2.send()
-    logger.debug("Returning house lights to cycle succeeded")
-    return
+        await self.messenger.scry(
+            'house-light',
+            condition=lambda pub: not pub.manual,
+            failure=pub_err,
+            timeout=TIMEOUT
+        )
+        logger.debug("Returning house lights to cycle succeeded")
+
+    async def play(self, stim):
+
+    async def stop(self, stim):
+
+class Sun:
+    def __init__(self):
+        self.manual = False
+        self.dyson = True
+        self.brightness = 0
+        self.daytime = True
+
+    def update(self, decoded):
+        logger.debug("Updating House-Light from PUB")
+        for key, val in decoded.items():
+            setattr(self, key, val)
+        return True
 
 
 class JukeBox:
@@ -192,39 +217,39 @@ class JukeBox:
 
         play_result = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda msg: (msg.audio_id == stim) & (pub.playback == PLAYING),
+                  caught=lambda msg: (msg.audio_id == stim) & (pub.playback == 1),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=TIMEOUT)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'audio_id': stim, 'playback': PLAYING}
+                                  body={'audio_id': stim, 'playback': 1}
                                   )
         await req.send()
         _, pub, _ = await play_result
         frame_count = pub.frame_count
 
-        self.stim_duration = frame_count/self.sample_rate
+        self.stim_duration = frame_count / self.sample_rate
         self.playing = True
 
         completion = asyncio.create_task(
             catch('audio-playback',
-                  caught=lambda msg: (msg.playback == STOPPED),
+                  caught=lambda msg: (msg.playback == 0),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
-                  timeout=self.stim_duration+TIMEOUT)
+                  timeout=self.stim_duration + TIMEOUT)
         )
         return self.stim_duration, completion
 
     async def stop(self, context=None):
         pub_confirmation = asyncio.create_task(
             catch('audio-playback',
-                  lambda msg: (msg.playback == STOPPED),
+                  lambda msg: (msg.playback == 0),
                   failure=lambda i: pub_err("audio-playback") if not i else None,
                   timeout=100)
         )
         req = await Request.spawn(request_type="ChangeState",
                                   component='audio-playback',
-                                  body={'playback': STOPPED}
+                                  body={'playback': 0}
                                   )
         await req.send()
         await pub_confirmation

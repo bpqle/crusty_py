@@ -3,71 +3,134 @@ import time
 import random
 import zmq
 import zmq.asyncio
-import yaml
 import logging
+from enum import Enum
+from .inform import *
 from .decrypt import Component
-from .request import Request
+from lib.generator_hex import decide_pb2 as dc_db
 from google.protobuf.json_format import MessageToDict
 logger = logging.getLogger(__name__)
 
-class Zim:
+class Sauron:
     @classmethod
     async def spawn(cls, sun_interval=300):
-        self = Zim()
+        self = Sauron()
+        context = zmq.asyncio.Context()
 
-        with open("/root/.config/decide-rs/config.yml", "r") as f:
+        self.pinky = context.socket(zmq.SUB)
+        self.pinky.connect(PUB_ENDPOINT)
+        self.pinky.subscribe(b'None')  # grab nothing
+
+        self.brain = context.socket(zmq.REQ)
+        self.brain.connect(REQ_ENDPOINT)
+        return self
+
+    async def request(self, request_type: str, component: str, body=None):
+        req = await Request.spawn(request_type, component, body)
+        message = [DECIDE_VERSION, req.type_encode, req.body]
+        if component is not None:
+            message.append(component.encode('utf-8'))
+        await self.brain.send_multipart(message)
+
+        poll_res = await self.brain.poll(TIMEOUT)
+        if poll_res == zmq.POLLIN:
+            *dc, reply = await self.brain.recv_multipart()
+            logger.debug(f" {self.request_type} - {self.component}  Reply received '{reply}'")
+            if dc[0] != DECIDE_VERSION:
+                logger.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
+
+            # Parse Reply:
+            rep_template = dc_db.Reply()
+            rep_template.ParseFromString(reply)
+            result = rep_template.WhichOneof('result')
+            logger.debug(f" {self.request_type} - {self.component}  Reply parsed as {result}")
+            if result == 'ok':
+                return
+            elif result == 'error':
+                logger.error(f"Reply error from decide-rs: {rep_template.result}")
+            elif result == 'params':  # decode params
+                any_params = rep_template.params
+                part = Component('param', self.component)
+                params = await part.from_any(any_params)
+                return params
+        else:  # timeout awaiting response
+            logger.error(f"{self.request_type} - {self.component}"
+                         f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
+
+    async def scry(self, component, condition, failure=None, timeout=None):
+        logger.info(f"Process started for {component}")
+        if isinstance(component, str):
+            self.pinky.subscribe(f"state/{component}".encode('utf-8'))
+        elif isinstance(component, list):
+            for c in component:
+                self.pinky.subscribe(f"state/{c}".encode('utf-8'))
+
+        interrupted = False
+        message = None
+        timer = None
+
+        async def test(sock, func):
+            nonlocal interrupted, message, start, timer
+            while True:
+                *topic, msg = await sock.recv_multipart(zmq.DONTWAIT)
+                state, comp = topic[0].decode("utf-8").split("/")
+                proto_comp = Component(state, comp)
+                tstamp, state_msg = await proto_comp.from_pub(msg)
+                if func(state_msg):
+                    end = time.time()
+                    timer = end - start
+                    message = state_msg
+                    interrupted = True
+                    return
+                else:
+                    continue
+
+        start = time.time()
+        if timeout is not None:
             try:
-                rs_conf = yaml.safe_load(f)
-            except yaml.YAMLError:
-                logger.error("Unable to load decide-rs config")
+                await asyncio.wait_for(test(self.pinky, condition), timeout)
+            except TimeoutError:
+                message = None
+                timer = timeout
+                if failure is not None:
+                    failure(component)
+        else:
+            await test(self.pinky, condition)
 
-        self.transient_comps = rs_conf.keys()
-        ctx = zmq.asyncio.Context.instance()
+        return interrupted, message, timer
 
-        self.sun = await Sun.spawn(interval=sun_interval)
 
-        persistent = zmq.asyncio.Poller()
-        self.persistent_comp = ['house-light','peck-keys']
-        self.peck_trigger = asyncio.Event()
+class Request:
+    @classmethod
+    async def spawn(cls, request_type: str, component: str, body=None):
+        self = Request()
+        logger.debug(f"{request_type} - {component} Initiating Request.")
+        if request_type in ["SetParameters", "GetParameters"]:
+            body_encode = Component('param', component, data=body)
+            request = await body_encode.to_req()
+        elif request_type in ["ChangeState", "GetState"]:
+            body_encode = Component('state', component, data=body)
+            request = await body_encode.to_req()
+        else:
+            logger.error(f"Unsupported Request Type {request_type} for {component}")
+            raise
+        self.request_type = request_type
+        self.type_encode = RequestType[request_type].value.to_bytes(2, 'little')
+        self.component = component
+        self.body = request.SerializeToString()
+        logger.debug(f"{request_type} - {component} Req Serialized to String")
+        return self
 
-        for c in self.persistent_comp:
-            if c in self.transient_comps:
-                self.transient_comps.remove(c)
-                sub = ctx.socket(zmq.SUB)
-                sub.connect(PUB_ENDPOINT)
-                sub.subscribe(f"state/{c}".encode('utf-8'))
-                persistent.register(sub, zmq.POLLIN)
 
-        self.transient = zmq.asyncio.Poller()
-        for c in self.transient_comps:
-            sub = ctx.socket(zmq.SUB)
-            sub.connect(PUB_ENDPOINT)
-            sub.subscribe(f"state/{c}".encode('utf-8'))
-            self.transient.register(sub, zmq.POLLIN)
-
-        logger.info("General PUB/SUB setup complete.")
-
-        while True:
-            poll_result = await persistent.poll(timeout=1000)
-            for (sock, flag) in poll_result:
-                if flag == zmq.POLLIN:
-                    await self.process_persistent(sock, trigger=self.peck_trigger)
-
-    async def process_persistent(self, sock, trigger):
-        *topic, msg = await sock.recv_multipart(zmq.DONTWAIT)
-        state, comp = topic[0].decode("utf-8").split("/")
-        component = Component(state, comp)
-        tstamp, state_msg = await component.from_pub(msg)
-        decoded = MessageToDict(state_msg,
-                                preserving_proto_field_name=True)
-        if comp == 'house-light':
-            self.sun.update(decoded)
-        elif comp == 'peck-key':
-            if trigger.is_set():
-                
-                yield decoded
-    def peck_check(self, test):
-
+class RequestType(Enum):
+    ChangeState = 0x00
+    ResetState = 0x01
+    SetParameters = 0x02
+    GetParameters = 0x12
+    ComponentShutdown = 0x13
+    RequestLock = 0x20
+    ReleaseLock = 0x21
+    Shutdown = 0x22
 
 class Sun:
     def __init__(self):
