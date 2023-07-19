@@ -23,12 +23,13 @@ class Component:
             self.component = self.SoundAlsa(meta_type, data)
         else:
             logger.error(f"Unrecognized/Unspecified Component Name {component}")
-
+        logging.proto(f"{component} - {meta_type} - protobuf parser created")
+        
     async def from_any(self, any_msg: _any.Any):
         if any_msg.type_url == self.component.type_url:
             any_string = any_msg.value
             res = self.component.data.ParseFromString(any_string)
-            logger.debug(f"{self.name} - {self.meta_type} - parsed Any message")
+            logger.proto(f"{self.name} - {self.meta_type} - parsed Any message")
             return self.component.data
         else:
             logger.error(f" Mismatching type_urls, got {any_msg.type_url} expected {self.component.type_url}")
@@ -37,26 +38,26 @@ class Component:
         any_msg = _any.Any()
         any_msg.type_url = self.component.type_url
         any_msg.Pack(self.component.data)
-        logger.debug(f"{self.name} - {self.meta_type} - packed pb_Any.")
+        logger.proto(f"{self.name} - {self.meta_type} - packed Any message.")
         return any_msg
 
     async def from_pub(self, msg):
         pub_msg = dc_pb.Pub()
         pub_msg.ParseFromString(msg)
         state_msg = await self.from_any(pub_msg.state)
-        logger.debug(f"{self.name} - state-pub - message parsed")
+        logger.proto(f"{self.name} - state-pub - message parsed")
         return pub_msg.time, state_msg
 
     async def to_req(self):
         if self.meta_type == 'state':
             req_msg = dc_pb.StateChange()
             req_msg.state.CopyFrom(await self.to_any())
-            logger.debug(f"{self.name} - state request formed")
+            logger.proto(f"{self.name} - state request formed")
             return req_msg
         elif self.meta_type == 'param':
             req_msg = dc_pb.ComponentParams()
             req_msg.parameters.CopyFrom(await self.to_any())
-            logger.debug(f"{self.name} - params request formed")
+            logger.proto(f"{self.name} - params request formed")
             return req_msg
         else:
             logger.error(f"Invalid meta-type {self.meta_type} for Component request to be formed")

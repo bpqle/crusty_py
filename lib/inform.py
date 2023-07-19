@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import yaml
 import aiohttp
@@ -6,19 +5,17 @@ import sys
 import time
 import os
 
-logger = logging.getLogger(__name__)
 
 with open("/root/.config/py_crust/config.yml", "r") as f:
     try:
         config = yaml.safe_load(f)
     except yaml.YAMLError:
-        logger.error("Unable to load py_crust configuration")
+        logging.error("Unable to load py_crust configuration")
 
 DECIDE_VERSION = config['DECIDE_VERSION'].encode('utf-8')
 REQ_ENDPOINT = config['REQ_ENDPOINT']
 PUB_ENDPOINT = config['PUB_ENDPOINT']
 TIMEOUT = config['TIMEOUT']
-
 SLACK_HOOK = config['SLACK_HOOK']
 LOCAL_LOG = config['LOCAL_LOG']
 CONTACT_HOST = config['CONTACT_HOST']
@@ -26,42 +23,64 @@ HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
 
 
-async def lincoln(log):
+async def lincoln(log, level=logging.DEBUG):
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     streamer = logging.StreamHandler(sys.stdout)
     streamer.setFormatter(formatter)
-    if LOCAL_LOG:
-        filer = logging.FileHandler(log, mode='w')
-        filer.setFormatter(formatter)
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[filer, streamer]
-        )
-        logger.debug(f"Logging to file {log}. Connecting to DecideAPI")
-    else:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[streamer]
-        )
-        logger.debug(f"Not logging to file. Connecting to DecideAPI")
+    filer = logging.FileHandler(log, mode='w')
+
+    handlers = [filer, streamer] if LOCAL_LOG else [streamer]
+    filer.setFormatter(formatter)
+    logging.basicConfig(
+        level=level,
+        handlers=handlers
+    )
+    logging.debug(f"Logging to file {log}. Connecting to DecideAPI")
+    # Trace is reserved for basic communication protocols of protobuf found in decrypt.py
+    logging.PROTO = 5
+    logging.addLevelName(logging.PROTO, 'PROTO')
+
+    def proto(self, message, *args, **kws):
+        if self.isEnabledFor(logging.PROTO):
+            self._log(logging.PROTO, message, args, **kws)
+    logging.Logger.proto = proto
+    logging.__all__ += ['PROTO']
+    # Dispatch is reserved for zmq operations found in relay.py
+    logging.DISPATCH = 12
+    logging.addLevelName(logging.DISPATCH, 'DISPATCH')
+
+    def dispatch(self, message, *args, **kws):
+        if self.isEnabledFor(logging.DISPATCH):
+            self._log(logging.DISPATCH, message, args, **kws)
+    logging.Logger.dispatch = dispatch
+    logging.__all__ += ['DISPATCH']
+    # State is reserved for state-machine operations found in process.py
+    logging.STATE = 19
+    logging.addLevelName(logging.STATE, 'STATE')
+
+    def state(self, message, *args, **kws):
+        if self.isEnabledFor(logging.STATE):
+            self._log(logging.STATE, message, args, **kws)
+    logging.Logger.state = state
+    logging.__all__ += ['STATE']
 
     if CONTACT_HOST:
         async with aiohttp.ClientSession as session:
             try:
                 async with session.get(urls=f"{HIVEMIND}/info/",
                                        ) as result:
-                    logger.debug("Response received from Decide-Host")
+                    logging.debug("Response received from Decide-Host")
                     reply = await result.json()
                     if result.status != 200:
-                        logger.error('GET Result Error from getting Decide-Host info:', reply)
+                        logging.error('GET Result Error from getting Decide-Host info:', reply)
                     elif ('api_version' not in reply) or (reply.api_version is None):
-                        logger.error('Unexpected reply from Decide-Host info:', reply)
+                        logging.error('Unexpected reply from Decide-Host info:', reply)
                     else:
-                        logger.info("Connected to Decide-Host.")
+                        logging.info("Connected to Decide-Host.")
             except aiohttp.ClientConnectionError as e:
-                logger.error('Could not contact Decide-Host:', str(e))
+                logging.error('Could not contact Decide-Host:', str(e))
     else:
-        logger.warning('Standalone Mode specified in config. Trials will not be logged')
+        logging.warning('Standalone Mode specified in config. Trials will not be logged')
     return
 
 
@@ -77,11 +96,11 @@ async def log_trial(msg: dict):
                                         ) as result:
                     if result.status != 200:
                         reply = await result.json()
-                        logger.error('POST Result Error from contacting Decide-Host:', reply)
+                        logging.error('POST Result Error from contacting Decide-Host:', reply)
                     else:
-                        logger.debug("Trial logged to DecideAPI.")
+                        logging.debug("Trial logged to DecideAPI.")
             except aiohttp.ClientConnectionError as e:
-                logger.error('Could not contact Decide-Host:', str(e))
+                logging.error('Could not contact Decide-Host:', str(e))
     return
 
 
@@ -101,9 +120,9 @@ async def slack(msg, usr=None):
                                     headers={'Content-Type': 'application/json'}
                                     ) as result:
                 reply = await result.json()
-        logger.info(f"Slacked user, response: {reply}")
+        logging.info(f"Slacked user, response: {reply}")
     except Exception as e:
-        logger.warning(f"Slack Error: {e}")
+        logging.warning(f"Slack Error: {e}")
     return
 
 

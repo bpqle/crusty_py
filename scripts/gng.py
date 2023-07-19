@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 sys.path.append(os.path.abspath(".."))
-from lib.manipulate import *
+from lib.process import *
 from lib.inform import *
 from lib.relay import *
 from google.protobuf.json_format import MessageToDict

@@ -1,13 +1,9 @@
-import asyncio
-import logging
-import zmq.asyncio
 import json
 import numpy as np
 from .errata import *
 from .relay import Sauron
 from .inform import *
-import yaml
-
+import asyncio
 logger = logging.getLogger(__name__)
 
 
@@ -20,24 +16,25 @@ class Morgoth:
             self.messenger = messenger
         else:
             self.messenger = Sauron()
+        logger.state("Apparatus-class Object created. Praise Dan.")
 
     async def set_feeder(self, duration):
-        logger.debug("Setting feed duration")
-        await self.messenger.request(request_type="SetParameters",
+        logger.state("Setting feed duration")
+        await self.messenger.command(request_type="SetParameters",
                                      component='stepper-motor',
                                      body={'timeout': duration}
                                      )
 
-        interval_check = await self.messenger.request(request_type="GetParameters",
+        interval_check = await self.messenger.command(request_type="GetParameters",
                                                       component='stepper-motor',
                                                       body=None)
         if interval_check.timeout != duration:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
     async def feed(self, delay=0):
-        logger.debug('feed() called, requesting stepper motor')
+        logger.state('feed() called, requesting stepper motor')
         await asyncio.sleep(delay)
-        await self.messenger.request(
+        await self.messenger.command(
             request_type="ChangeState",
             component='stepper-motor',
             body={'running': True, 'direction': True}
@@ -48,20 +45,20 @@ class Morgoth:
             failure=pub_err,
             timeout=TIMEOUT
         )
-        logger.debug('feeding confirmed by decide-rs, awaiting motor stop')
+        logger.state('feeding confirmed by decide-rs, awaiting motor stop')
         await self.messenger.scry(
             'stepper-motor',
             condition=lambda pub: not pub.running,
             failure=pub_err,
             timeout=TIMEOUT
         )
-        logger.debug('motor stop confirmed by decide-rs')
+        logger.state('motor stop confirmed by decide-rs')
         return
 
     async def cue(self, loc, color):
         pos = peck_parse(loc, mode='l')
-        logger.debug(f'Requesting cue {pos}')
-        await self.messenger.request(
+        logger.state(f'Requesting cue {pos}')
+        await self.messenger.command(
             request_type="ChangeState",
             component=pos,
             body={'led_state': color}
@@ -76,10 +73,10 @@ class Morgoth:
 
     async def keep_alight(self, interval):
         self.sun = Sun()
-        await self.messenger.request(request_type="SetParameters",
+        await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
                                      body={'clock_interval': interval})
-        interval_check = await self.messenger.request(request_type="GetParameters",
+        interval_check = await self.messenger.command(request_type="GetParameters",
                                                       component='house-light',
                                                       body=None)
         if interval_check.clock_interval != interval:
@@ -91,8 +88,8 @@ class Morgoth:
             await asyncio.sleep(TIMEOUT/100)
 
     async def blip(self, duration, brightness=0):
-        logger.debug("Manually changing house lights")
-        await self.messenger.request(request_type="ChangeState",
+        logger.state("Manually changing house lights")
+        await self.messenger.command(request_type="ChangeState",
                                      component='house-light',
                                      body={'manual': True, 'brightness': brightness})
         await self.messenger.scry(
@@ -101,12 +98,12 @@ class Morgoth:
             failure=pub_err,
             timeout=TIMEOUT
         )
-        logger.debug("Manually changing house lights confirmed by decide-rs.")
+        logger.state("Manually changing house lights confirmed by decide-rs.")
 
         await asyncio.sleep(duration)
 
-        logger.debug("Returning house lights to cycle")
-        await self.messenger.request(request_type="ChangeState",
+        logger.state("Returning house lights to cycle")
+        await self.messenger.command(request_type="ChangeState",
                                      component='house-light',
                                      body={'manual': False, 'ephemera': True}
                                      )
@@ -116,17 +113,17 @@ class Morgoth:
             failure=pub_err,
             timeout=TIMEOUT
         )
-        logger.debug("Returning house lights to cycle succeeded")
+        logger.state("Returning house lights to cycle succeeded")
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
         self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
-        logger.debug("Requesting stimuli directory change")
-        await self.messenger.request(
+        logger.state("Requesting stimuli directory change")
+        await self.messenger.command(
             request_type="SetParameters",
             component='audio-playback',
             body={'audio_dir': self.playback.dir}
         )
-        dir_check = await self.messenger.request(
+        dir_check = await self.messenger.command(
             request_type="GetParameters",
             component='audio-playback',
             body=None,
@@ -141,9 +138,9 @@ class Morgoth:
     async def play(self, stim=None):
         if stim is None:
             stim = self.playback.stimulus
-        logger.debug(f"Playback of {stim} requested")
+        logger.state(f"Playback of {stim} requested")
 
-        await self.messenger.request(
+        await self.messenger.command(
             request_type="ChangeState",
             component='audio-playback',
             body={'audio_id': stim, 'playback': 1}
@@ -167,7 +164,7 @@ class Morgoth:
         return stim_duration, handle
 
     async def stop(self):
-        await self.messenger.request(
+        await self.messenger.command(
             request_type="ChangeState",
             component='audio-playback',
             body={'playback': 0}
@@ -189,7 +186,7 @@ class Sun:
         self.daytime = True
 
     def update(self, decoded):
-        logger.debug("Updating House-Light from PUB")
+        logger.state("Updating House-Light from PUB")
         for key, val in decoded.items():
             setattr(self, key, val)
         return True
@@ -219,7 +216,7 @@ class JukeBox:
         self.cue_locations = {}
         playlist = []
 
-        logger.debug("Validating and generating playlist")
+        logger.state("Validating and generating playlist")
         for i, stim in enumerate(self.stim_data):
             cue_loc = None
             for action, consq in stim['responses'].items():
