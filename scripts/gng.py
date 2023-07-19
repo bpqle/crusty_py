@@ -1,14 +1,16 @@
 #!/usr/bin/python3
 import os
 import sys
-sys.path.append(os.path.abspath(".."))
-from lib.manipulate import *
-from lib.inform import *
-from google.protobuf.json_format import MessageToDict
 import argparse
 import asyncio
 import logging
 import random
+sys.path.append(os.path.abspath(".."))
+from lib.manipulate import *
+from lib.inform import *
+from lib.relay import *
+from google.protobuf.json_format import MessageToDict
+
 
 __name__ = 'gng'
 
@@ -35,7 +37,6 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
 args = p.parse_args()
-
 
 state = {
     'subject': args.birdID,  # logged
@@ -67,6 +68,7 @@ params = {
 
 
 async def await_init():
+
     await_input = peck_parse(params['init_key'], 'r')
 
     def peck_init(key_state):
@@ -74,52 +76,57 @@ async def await_init():
                                preserving_proto_field_name=True)
         if (await_input in pecked) and (pecked[await_input]):
             return True
-    await catch('peck-keys',
-                caught=peck_init)
+    await decider.messenger.scry(
+        'peck-keys',
+        caught=peck_init,
+    )
 
 
-async def present_stim(pb, stim_data):
-    await pb.play(stim_data['name'])
+async def present_stim(stim_data):
+    await decider.play(stim_data['name'])
 
 
-async def await_respond(pb, stim_data, correction):
+async def await_respond(stim_data, correction):
     if correction and await correction_check(correction):
-        await cue(pb.current_cue(), params['cue_color'])
+        cue_loc = peck_parse(decider.playback.current_cue(), 'l')
+        await decider.cue(cue_loc, params['cue_color'])
     response = 'timeout'
 
     def resp_check(key_state):
+        nonlocal response
         pecked = MessageToDict(key_state,
                                preserving_proto_field_name=True)
         for k, v in pecked.items():
             if v & (k in stim_data):
+                response = k
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=params['response_duration'])
+    responded, _, rtime = await decider.messenger.scry(
+        'peck-keys',
+        condition=resp_check,
+        timeout=params['response_duration']
+    )
+
     if not responded:
-        return response, None
+        return response, None, cue_loc
     else:
-        for key, val in MessageToDict(msg, preserving_proto_field_name=True).items():
-            if val & (key in stim_data):
-                response = key
-        return response, rtime
+        return response, rtime, cue_loc
 
 
-async def complete(playback, stim_data, correction, response, rtime):
-    await cue(playback.current_cue(), 'off')
+async def complete(cue_loc, stim_data, correction, response, rtime):
+    await decider.cue(cue_loc, 'off')
     # Determine outcome
     outcome = stim_data['responses'][response]
     rand = random.random()
     if outcome['correct']:
         if outcome['p_reward'] >= rand:
-            await asyncio.sleep(params['feed_delay'])
-            await feed()
+            await asyncio.sleep(params['feed_delay']/1000)
+            await decider.feed()
         result = 'feed'
     else:
         if outcome['p_punish'] >= rand:
-            await blip(0, params['punish_duration'])
+            await decider.blip(params['punish_duration'])
         result = 'no_feed'
     # Log Trial
     state.update({
@@ -142,7 +149,7 @@ async def complete(playback, stim_data, correction, response, rtime):
         logger.debug("Next Trial correction.")
     else:
         correction = 0
-        stim_data = playback.next()
+        stim_data = decider.playback.next()
     return stim_data, correction
 
 
@@ -155,31 +162,28 @@ async def correction_check(correction):
         return np.exp(correction / params['max_corrections']) >= random.random()
 
 
+decider = Morgoth()
+
+
 async def main():
-    context = zmq.Context()
-    # Check status of decide-rs
-    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
     await lincoln(log=f"{args.birdID}_{__name__}.log")
 
-    light = await Sun.spawn(interval=300)
-    asyncio.create_task(light.cycle())
+    asyncio.create_task(decider.keep_alight())
+    await decider.set_feeder(duration=params['feed_duration'])
+    await decider.init_playback(args.config, replace=args.replace)
 
-    await set_feeder(duration=params['feed_duration'])
-    playback = await JukeBox.spawn(args.config,
-                                   shuffle=True,
-                                   replace=params['replace'])
     correction = 0
-    stim_data = playback.next()
+    stim_data = decider.playback.next()
 
     logging.info("GNG.py initiated")
     await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
 
     while True:
         await await_init()
-        await present_stim(playback, stim_data)
-        response, rtime = await await_respond(playback, stim_data, correction)
-        stim_data, correction = await complete(playback, stim_data, correction, response, rtime)
+        await present_stim(stim_data)
+        response, rtime, cue_loc = await await_respond(stim_data, correction)
+        stim_data, correction = await complete(cue_loc, stim_data, correction, response, rtime)
 
 
 if __name__ == "__gng__":

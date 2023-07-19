@@ -12,30 +12,26 @@ from google.protobuf.json_format import MessageToDict
 logger = logging.getLogger(__name__)
 
 class Sauron:
-    @classmethod
-    async def spawn(cls, sun_interval=300):
-        self = Sauron()
+    def __init__(self):
         context = zmq.asyncio.Context()
 
-        self.pinky = context.socket(zmq.SUB)
-        self.pinky.connect(PUB_ENDPOINT)
-        self.pinky.subscribe(b'None')  # grab nothing
+        self.subber = context.socket(zmq.SUB)
+        self.subber.connect(PUB_ENDPOINT)
 
-        self.brain = context.socket(zmq.REQ)
-        self.brain.connect(REQ_ENDPOINT)
-        return self
+        self.caller = context.socket(zmq.REQ)
+        self.caller.connect(REQ_ENDPOINT)
 
     async def request(self, request_type: str, component: str, body=None):
         req = await Request.spawn(request_type, component, body)
         message = [DECIDE_VERSION, req.type_encode, req.body]
         if component is not None:
             message.append(component.encode('utf-8'))
-        await self.brain.send_multipart(message)
+        await self.caller.send_multipart(message)
 
-        poll_res = await self.brain.poll(TIMEOUT)
+        poll_res = await self.caller.poll(TIMEOUT)
         if poll_res == zmq.POLLIN:
-            *dc, reply = await self.brain.recv_multipart()
-            logger.debug(f" {self.request_type} - {self.component}  Reply received '{reply}'")
+            *dc, reply = await self.caller.recv_multipart()
+            logger.debug(f" {request_type} - {component}  Reply received '{reply}'")
             if dc[0] != DECIDE_VERSION:
                 logger.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
 
@@ -43,27 +39,27 @@ class Sauron:
             rep_template = dc_db.Reply()
             rep_template.ParseFromString(reply)
             result = rep_template.WhichOneof('result')
-            logger.debug(f" {self.request_type} - {self.component}  Reply parsed as {result}")
+            logger.debug(f" {request_type} - {component}  Reply parsed as {result}")
             if result == 'ok':
                 return
             elif result == 'error':
                 logger.error(f"Reply error from decide-rs: {rep_template.result}")
             elif result == 'params':  # decode params
                 any_params = rep_template.params
-                part = Component('param', self.component)
+                part = Component('param', component)
                 params = await part.from_any(any_params)
                 return params
         else:  # timeout awaiting response
-            logger.error(f"{self.request_type} - {self.component}"
+            logger.error(f"{request_type} - {component}"
                          f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
 
     async def scry(self, component, condition, failure=None, timeout=None):
         logger.info(f"Process started for {component}")
         if isinstance(component, str):
-            self.pinky.subscribe(f"state/{component}".encode('utf-8'))
-        elif isinstance(component, list):
-            for c in component:
-                self.pinky.subscribe(f"state/{c}".encode('utf-8'))
+            self.subber.subscribe(f"state/{component}".encode('utf-8'))
+        # elif isinstance(component, list):
+        #     for c in component:
+        #         self.subber.subscribe(f"state/{c}".encode('utf-8'))
 
         interrupted = False
         message = None
@@ -88,15 +84,16 @@ class Sauron:
         start = time.time()
         if timeout is not None:
             try:
-                await asyncio.wait_for(test(self.pinky, condition), timeout)
+                await asyncio.wait_for(test(self.subber, condition), timeout)
             except TimeoutError:
                 message = None
                 timer = timeout
                 if failure is not None:
                     failure(component)
         else:
-            await test(self.pinky, condition)
+            await test(self.subber, condition)
 
+        self.subber.unsubscribe(f"state/{component}")
         return interrupted, message, timer
 
 
