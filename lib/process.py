@@ -1,9 +1,15 @@
 import json
 import numpy as np
-from .errata import *
-from .relay import Sauron
+import zmq.asyncio
+
+from .errata import pub_err
+from .dispatch import Sauron
 from .inform import *
+from .decrypt import Component
+from google.protobuf.json_format import MessageToDict
 import asyncio
+import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,21 +40,22 @@ class Morgoth:
     async def feed(self, delay=0):
         logger.state('feed() called, requesting stepper motor')
         await asyncio.sleep(delay)
-        await self.messenger.command(
+        a = asyncio.create_task(self.messenger.scry(
+            'stepper-motor',
+            condition=lambda p: p['running'],
+            failure=pub_err,
+            timeout=TIMEOUT
+        ))
+        b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component='stepper-motor',
             body={'running': True, 'direction': True}
-        )
-        await self.messenger.scry(
-            'stepper-motor',
-            condition=lambda p: p.running,
-            failure=pub_err,
-            timeout=TIMEOUT
-        )
+        ))
+        await asyncio.gather(a, b)
         logger.state('feeding confirmed by decide-rs, awaiting motor stop')
         await self.messenger.scry(
             'stepper-motor',
-            condition=lambda pub: not pub.running,
+            condition=lambda pub: not pub['running'],
             failure=pub_err,
             timeout=TIMEOUT
         )
@@ -58,61 +65,76 @@ class Morgoth:
     async def cue(self, loc, color):
         pos = peck_parse(loc, mode='l')
         logger.state(f'Requesting cue {pos}')
-        await self.messenger.command(
+        a = asyncio.create_task(self.messenger.scry(
+            pos,
+            condition=lambda pub: pub['led_state'] == color,
+            failure=pub_err,
+            timeout=TIMEOUT
+        ))
+        b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component=pos,
             body={'led_state': color}
-        )
-        await self.messenger.scry(
-            pos,
-            condition=lambda pub: not pub.running,
-            failure=pub_err,
-            timeout=TIMEOUT
-        )
+        ))
+        await asyncio.gather(a, b)
         return
 
-    async def keep_alight(self, interval):
+    async def keep_alight(self, interval=300):
         self.sun = Sun()
         await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
-                                     body={'clock_interval': interval})
+                                     body={'clock_interval': interval},
+                                     caller=0)
         interval_check = await self.messenger.command(request_type="GetParameters",
                                                       component='house-light',
-                                                      body=None)
+                                                      body=None,
+                                                      caller=0)
         if interval_check.clock_interval != interval:
             logger.error(f"House-Light Clock Interval not set to {interval},"
                          f" got {interval_check.clock_interval}")
 
         while True:
-            await self.messenger.scry('house-light', self.sun.update, timeout=TIMEOUT)
-            await asyncio.sleep(TIMEOUT/100)
+            *topic, msg = await self.messenger.lighter.recv_multipart()
+            logger.state(f"House-light - message received, checking")
+            state, comp = topic[0].decode("utf-8").split("/")
+            proto_comp = Component(state, comp)
+            tstamp, state_msg = await proto_comp.from_pub(msg)
+            decoded = MessageToDict(state_msg,
+                                    including_default_value_fields=True,
+                                    preserving_proto_field_name=True)
+            self.sun.update(decoded)
 
     async def blip(self, duration, brightness=0):
         logger.state("Manually changing house lights")
-        await self.messenger.command(request_type="ChangeState",
-                                     component='house-light',
-                                     body={'manual': True, 'brightness': brightness})
-        await self.messenger.scry(
+        a = asyncio.create_task(self.messenger.scry(
             'house-light',
-            condition=lambda pub: True if pub.brightness == brightness else False,
+            condition=lambda pub: True if pub['brightness'] == brightness else False,
             failure=pub_err,
             timeout=TIMEOUT
-        )
+        ))
+
+        b = asyncio.create_task(self.messenger.command(
+            request_type="ChangeState",
+            component='house-light',
+            body={'manual': True, 'brightness': brightness}
+        ))
+        await asyncio.gather(a, b)
         logger.state("Manually changing house lights confirmed by decide-rs.")
 
-        await asyncio.sleep(duration)
+        await asyncio.sleep(duration/1000)
 
         logger.state("Returning house lights to cycle")
-        await self.messenger.command(request_type="ChangeState",
-                                     component='house-light',
-                                     body={'manual': False, 'ephemera': True}
-                                     )
-        await self.messenger.scry(
+        a = asyncio.create_task(self.messenger.scry(
             'house-light',
-            condition=lambda pub: not pub.manual,
+            condition=lambda pub: not pub['manual'],
             failure=pub_err,
-            timeout=TIMEOUT
-        )
+        ))
+        b = asyncio.create_task(self.messenger.command(
+            request_type="ChangeState",
+            component='house-light',
+            body={'manual': False, 'dyson': True}
+        ))
+        await asyncio.gather(a, b)
         logger.state("Returning house lights to cycle succeeded")
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
@@ -123,13 +145,13 @@ class Morgoth:
             component='audio-playback',
             body={'audio_dir': self.playback.dir}
         )
+        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
         dir_check = await self.messenger.command(
             request_type="GetParameters",
             component='audio-playback',
             body=None,
-            timeout=None,
+            timeout=100000
         )
-        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
         if dir_check.audio_dir != self.playback.dir:
             logger.error(f"Auditory folder mismatch: got {dir_check.audio_dir} expected {self.playback.dir}")
 
@@ -139,42 +161,45 @@ class Morgoth:
         if stim is None:
             stim = self.playback.stimulus
         logger.state(f"Playback of {stim} requested")
-
-        await self.messenger.command(
+        a = asyncio.create_task(self.messenger.scry(
+            'audio-playback',
+            condition=lambda msg: (msg['audio_id'] == stim) & (msg['playback'] == 1),
+            failure=pub_err,
+            timeout=TIMEOUT
+        ))
+        b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component='audio-playback',
             body={'audio_id': stim, 'playback': 1}
-        )
-        _, pub, _ = await self.messenger.scry(
-            'audio-playback',
-            condition=lambda msg: (msg.audio_id == stim) & (pub.playback == 1),
-            failure=pub_err,
-            timeout=TIMEOUT
-        )
-        frame_count = pub.frame_count
+        ))
+        _, pub, _ = await a
+        await b
 
+        frame_count = pub['frame_count']
         stim_duration = frame_count / self.playback.sample_rate
 
         handle = asyncio.create_task(self.messenger.scry(
             'audio-playback',
-            condition=lambda msg: (msg.playback == 0),
+            condition=lambda msg: (msg['playback'] == 0),
             failure=pub_err,
             timeout=stim_duration + TIMEOUT
         ))
         return stim_duration, handle
 
     async def stop(self):
-        await self.messenger.command(
+        a = asyncio.create_task(self.messenger.scry(
+            'audio-playback',
+            condition=lambda msg: (msg['playback'] == 0),
+            failure=pub_err,
+            timeout=TIMEOUT
+        ))
+        b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component='audio-playback',
             body={'playback': 0}
-        )
-        await self.messenger.scry(
-            'audio-playback',
-            condition=lambda msg: (msg.playback == 0),
-            failure=pub_err,
-            timeout=TIMEOUT
-        )
+        ))
+        await b
+        await a
         return
 
 

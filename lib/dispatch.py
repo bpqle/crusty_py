@@ -1,9 +1,11 @@
 import zmq
+import asyncio
 import zmq.asyncio
 from enum import Enum
 from .inform import *
 from .decrypt import Component
 from lib.generator_hex import decide_pb2 as dc_db
+from google.protobuf.json_format import MessageToDict
 logging = logging.getLogger(__name__)
 
 
@@ -14,21 +16,29 @@ class Sauron:
         self.subber = context.socket(zmq.SUB)
         self.subber.connect(PUB_ENDPOINT)
 
+        self.lsub = context.socket(zmq.SUB)
+        self.lsub.connect(PUB_ENDPOINT)
+        self.lsub.subscribe("state/house-light")
+
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
+
+        self.lcaller = context.socket(zmq.REQ)
+        self.lcaller.connect(REQ_ENDPOINT)
         logging.dispatch("REQ and PUB sockets created.")
 
-    async def command(self, request_type: str, component: str, body=None):
+    async def command(self, request_type: str, component: str, body=None, timeout=TIMEOUT, caller=1):
         req = await Request.spawn(request_type, component, body)
         message = [DECIDE_VERSION, req.type_encode, req.body]
         if component is not None:
             message.append(component.encode('utf-8'))
-        await self.caller.send_multipart(message)
+        requester = self.caller if caller == 1 else self.lcaller
+        await requester.send_multipart(message)
         logging.dispatch(f"Request {request_type} - {component} sent, awaiting response")
-        poll_res = await self.caller.poll(TIMEOUT)
+        poll_res = await requester.poll(timeout=timeout)
         logging.dispatch(f"Response {request_type} - {component} received")
         if poll_res == zmq.POLLIN:
-            *dc, reply = await self.caller.recv_multipart()
+            *dc, reply = await requester.recv_multipart()
             logging.dispatch(f" {request_type} - {component}  Reply received '{reply}'")
             if dc[0] != DECIDE_VERSION:
                 logging.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
@@ -65,15 +75,19 @@ class Sauron:
             logging.dispatch(f"Scry {component} - test starting")
             nonlocal interrupted, message, start, timer
             while True:
-                *topic, msg = await sock.recv_multipart(zmq.DONTWAIT)
+                *topic, msg = await sock.recv_multipart()
                 logging.dispatch(f"Scry {component} - message received, checking")
                 state, comp = topic[0].decode("utf-8").split("/")
                 proto_comp = Component(state, comp)
                 tstamp, state_msg = await proto_comp.from_pub(msg)
-                if func(state_msg):
+                decoded = MessageToDict(state_msg,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
+                logging.debug(decoded)
+                if func(decoded):
                     end = time.time()
                     timer = end - start
-                    message = state_msg
+                    message = decoded
                     interrupted = True
                     logging.dispatch(f"Scry {component} - check succeeded. Ending.")
                     return
@@ -85,7 +99,7 @@ class Sauron:
         if timeout is not None:
             try:
                 await asyncio.wait_for(test(self.subber, condition), timeout)
-            except TimeoutError:
+            except asyncio.exceptions.TimeoutError:
                 message = None
                 timer = timeout
                 if failure is not None:

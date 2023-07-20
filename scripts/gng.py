@@ -5,11 +5,11 @@ import argparse
 import asyncio
 import logging
 import random
+from google.protobuf.json_format import MessageToDict
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
-from lib.relay import *
-from google.protobuf.json_format import MessageToDict
+from lib.dispatch import *
 
 
 __name__ = 'gng'
@@ -36,6 +36,7 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
                action='store', default=0)
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
+p.add_argument('--log_level', default='DEBUG')
 args = p.parse_args()
 
 state = {
@@ -53,7 +54,7 @@ state = {
 params = {
     'user': args.user,
     'active': True,
-    'response_duration': args.response_duration,
+    'response_duration': args.response_duration/1000,
     'feed_duration': args.feed_duration,
     'punish_duration': args.lightsout_duration,
     'max_corrections': args.max_corrections,
@@ -65,39 +66,45 @@ params = {
     'min_iti': 100,
     'init_key': args.init_position,
 }
+lincoln(log=f"{args.birdID}_{__name__}.log")
+decider = Morgoth()
 
 
 async def await_init():
-
+    logger.state("Awaiting init")
     await_input = peck_parse(params['init_key'], 'r')
 
-    def peck_init(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        if (await_input in pecked) and (pecked[await_input]):
+    def peck_init(key_msg):
+        if (await_input in key_msg) and (key_msg[await_input]):
             return True
     await decider.messenger.scry(
         'peck-keys',
-        caught=peck_init,
+        condition=peck_init,
     )
 
 
 async def present_stim(stim_data):
-    await decider.play(stim_data['name'])
+    logger.state('Peck init registered, presenting stim')
+    duration, handle = await decider.play(stim_data['name'])
+    logger.state(f"Stim will play for {duration}s")
+    await handle
+    return
 
 
-async def await_respond(stim_data, correction):
-    if correction and await correction_check(correction):
+async def await_response(stim_data, correction):
+    logger.state("Awaiting response")
+    if (correction > 0) and correction_check(correction):
         cue_loc = peck_parse(decider.playback.current_cue(), 'l')
         await decider.cue(cue_loc, params['cue_color'])
+    else:
+        cue_loc = None
     response = 'timeout'
+    logger.debug(stim_data)
 
-    def resp_check(key_state):
+    def resp_check(pub_msg):
         nonlocal response
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
-            if v & (k in stim_data):
+        for k, v in pub_msg.items():
+            if (k in stim_data['responses']) & bool(v):
                 response = k
                 return True
         return False
@@ -115,7 +122,9 @@ async def await_respond(stim_data, correction):
 
 
 async def complete(cue_loc, stim_data, correction, response, rtime):
-    await decider.cue(cue_loc, 'off')
+    logger.state("At trial exit")
+    if cue_loc:
+        await decider.cue(cue_loc, 'off')
     # Determine outcome
     outcome = stim_data['responses'][response]
     rand = random.random()
@@ -153,7 +162,7 @@ async def complete(cue_loc, stim_data, correction, response, rtime):
     return stim_data, correction
 
 
-async def correction_check(correction):
+def correction_check(correction):
     if params['cue_frequency'] == 'never':
         return False
     elif params['cue_frequency'] == 'always':
@@ -162,12 +171,9 @@ async def correction_check(correction):
         return np.exp(correction / params['max_corrections']) >= random.random()
 
 
-decider = Morgoth()
-
-
 async def main():
     # Start logging
-    await lincoln(log=f"{args.birdID}_{__name__}.log")
+    await contact_host()
 
     asyncio.create_task(decider.keep_alight())
     await decider.set_feeder(duration=params['feed_duration'])
@@ -182,11 +188,11 @@ async def main():
     while True:
         await await_init()
         await present_stim(stim_data)
-        response, rtime, cue_loc = await await_respond(stim_data, correction)
+        response, rtime, cue_loc = await await_response(stim_data, correction)
         stim_data, correction = await complete(cue_loc, stim_data, correction, response, rtime)
 
 
-if __name__ == "__gng__":
+if __name__ == "gng":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

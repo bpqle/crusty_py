@@ -23,7 +23,7 @@ HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
 
 
-async def lincoln(log, level=logging.DEBUG):
+def lincoln(log, level=logging.DEBUG):
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     streamer = logging.StreamHandler(sys.stdout)
     streamer.setFormatter(formatter)
@@ -36,52 +36,32 @@ async def lincoln(log, level=logging.DEBUG):
         handlers=handlers
     )
     logging.debug(f"Logging to file {log}. Connecting to DecideAPI")
-    # Trace is reserved for basic communication protocols of protobuf found in decrypt.py
-    logging.PROTO = 5
-    logging.addLevelName(logging.PROTO, 'PROTO')
-
-    def proto(self, message, *args, **kws):
-        if self.isEnabledFor(logging.PROTO):
-            self._log(logging.PROTO, message, args, **kws)
-    logging.Logger.proto = proto
-    logging.__all__ += ['PROTO']
-    # Dispatch is reserved for zmq operations found in relay.py
-    logging.DISPATCH = 12
-    logging.addLevelName(logging.DISPATCH, 'DISPATCH')
-
-    def dispatch(self, message, *args, **kws):
-        if self.isEnabledFor(logging.DISPATCH):
-            self._log(logging.DISPATCH, message, args, **kws)
-    logging.Logger.dispatch = dispatch
-    logging.__all__ += ['DISPATCH']
+    # Proto is reserved for basic communication protocols of protobuf found in decrypt.py
+    add_log_lvl('PROTO', 11, 'proto')
+    # Dispatch is reserved for zmq operations found in dispatch.py
+    add_log_lvl('DISPATCH', 12, 'dispatch')
     # State is reserved for state-machine operations found in process.py
-    logging.STATE = 19
-    logging.addLevelName(logging.STATE, 'STATE')
+    add_log_lvl('STATE', 13, 'state')
 
-    def state(self, message, *args, **kws):
-        if self.isEnabledFor(logging.STATE):
-            self._log(logging.STATE, message, args, **kws)
-    logging.Logger.state = state
-    logging.__all__ += ['STATE']
 
+async def contact_host():
     if CONTACT_HOST:
         async with aiohttp.ClientSession as session:
             try:
                 async with session.get(urls=f"{HIVEMIND}/info/",
                                        ) as result:
-                    logging.debug("Response received from Decide-Host")
+                    logging.dispatch("Response received from Decide-Host")
                     reply = await result.json()
                     if result.status != 200:
                         logging.error('GET Result Error from getting Decide-Host info:', reply)
                     elif ('api_version' not in reply) or (reply.api_version is None):
                         logging.error('Unexpected reply from Decide-Host info:', reply)
                     else:
-                        logging.info("Connected to Decide-Host.")
+                        logging.dispatch("Connected to Decide-Host.")
             except aiohttp.ClientConnectionError as e:
                 logging.error('Could not contact Decide-Host:', str(e))
     else:
         logging.warning('Standalone Mode specified in config. Trials will not be logged')
-    return
 
 
 async def log_trial(msg: dict):
@@ -98,7 +78,7 @@ async def log_trial(msg: dict):
                         reply = await result.json()
                         logging.error('POST Result Error from contacting Decide-Host:', reply)
                     else:
-                        logging.debug("Trial logged to DecideAPI.")
+                        logging.dispatch("Trial logged to DecideAPI.")
             except aiohttp.ClientConnectionError as e:
                 logging.error('Could not contact Decide-Host:', str(e))
     return
@@ -126,8 +106,45 @@ async def slack(msg, usr=None):
     return
 
 
+# The following function is taken from https://stackoverflow.com/questions/2183233
+# Checkout module haggis for more information
+def add_log_lvl(name, num, method_name=None):
+    """
+    Comprehensively adds a new logging level to the `logging` module and the
+    currently configured logging class.
+    """
+    if not method_name:
+        method_name = name.lower()
+
+    if hasattr(logging, name):
+        raise AttributeError('{} already defined in logging module'.format(name))
+    if hasattr(logging, method_name):
+        raise AttributeError('{} already defined in logging module'.format(method_name))
+    if hasattr(logging.getLoggerClass(), method_name):
+        raise AttributeError('{} already defined in logger class'.format(method_name))
+
+    def logForLevel(self, message, *args, **kwargs):
+        if self.isEnabledFor(num):
+            self._log(num, message, args, **kwargs)
+    def logToRoot(message, *args, **kwargs):
+        logging.log(num, message, *args, **kwargs)
+
+    logging.addLevelName(num, name)
+    setattr(logging, name, num)
+    setattr(logging.getLoggerClass(), method_name, logForLevel)
+    setattr(logging, method_name, logToRoot)
+
+
 # This function maintains sanity
 def peck_parse(phrase, mode):
+    """
+    Takes in a string containing location (left, right, center)
+     and outputs a string that matches the method to be used
+    :param phrase: string variable to be parsed
+    :param mode: 'l' for led, 'r' for key/response
+    :return:
+    """
+    logging.debug(f"Phrase received is {phrase}")
     if mode in ['led', 'l', 'leds']:
         if 'left' in phrase:
             return 'peck_led_left'
