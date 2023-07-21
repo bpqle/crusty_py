@@ -6,7 +6,8 @@ from .inform import *
 from .decrypt import Component
 from lib.generator_hex import decide_pb2 as dc_db
 from google.protobuf.json_format import MessageToDict
-logging = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 class Sauron:
@@ -15,55 +16,68 @@ class Sauron:
 
         self.subber = context.socket(zmq.SUB)
         self.subber.connect(PUB_ENDPOINT)
-
-        self.lsub = context.socket(zmq.SUB)
-        self.lsub.connect(PUB_ENDPOINT)
-        self.lsub.subscribe("state/house-light")
-
+        self.subber.subscribe(b"")
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
 
-        self.lcaller = context.socket(zmq.REQ)
-        self.lcaller.connect(REQ_ENDPOINT)
-        logging.dispatch("REQ and PUB sockets created.")
+        self.queue = asyncio.Queue()
+        logger.dispatch("REQ and PUB sockets created.")
 
-    async def command(self, request_type: str, component: str, body=None, timeout=TIMEOUT, caller=1):
+    async def command(self, request_type: str, component: str, body=None, timeout=TIMEOUT):
         req = await Request.spawn(request_type, component, body)
         message = [DECIDE_VERSION, req.type_encode, req.body]
         if component is not None:
             message.append(component.encode('utf-8'))
-        requester = self.caller if caller == 1 else self.lcaller
-        await requester.send_multipart(message)
-        logging.dispatch(f"Request {request_type} - {component} sent, awaiting response")
-        poll_res = await requester.poll(timeout=timeout)
-        logging.dispatch(f"Response {request_type} - {component} received")
+        await self.caller.send_multipart(message)
+        logger.dispatch(f"Request {request_type} - {component} sent, awaiting response")
+        poll_res = await self.caller.poll(timeout=timeout)
+        logger.dispatch(f"Response {request_type} - {component} received")
         if poll_res == zmq.POLLIN:
-            *dc, reply = await requester.recv_multipart()
-            logging.dispatch(f" {request_type} - {component}  Reply received '{reply}'")
+            *dc, reply = await self.caller.recv_multipart()
+            logger.dispatch(f" {request_type} - {component}  Reply received '{reply}'")
             if dc[0] != DECIDE_VERSION:
-                logging.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
+                logger.warning(f"Mismatch Version of DECIDE-RS in reply {dc[0]}")
 
             # Parse Reply:
             rep_template = dc_db.Reply()
             rep_template.ParseFromString(reply)
             result = rep_template.WhichOneof('result')
-            logging.dispatch(f" {request_type} - {component}  Reply parsed as {result}")
+            logger.dispatch(f" {request_type} - {component}  Reply parsed as {result}")
             if result == 'ok':
                 return
             elif result == 'error':
-                logging.error(f"Reply error from decide-rs: {rep_template.result}")
+                logger.error(f"Reply error from decide-rs: {rep_template.result}")
             elif result == 'params':  # decode params
                 any_params = rep_template.params
                 part = Component('param', component)
                 params = await part.from_any(any_params)
-                logging.dispatch(f" Response {request_type} - {component} params parsed")
+                logger.dispatch(f" Response {request_type} - {component} params parsed")
                 return params
         else:  # timeout awaiting response
-            logging.error(f"{request_type} - {component}"
+            logger.error(f"{request_type} - {component}"
                          f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
 
+    async def eye(self):
+        logger.dispatch("Sauron's Eye watching")
+        while True:
+            *topic, msg = await self.subber.recv_multipart()
+            state, comp = topic[0].decode("utf-8").split("/")
+            logger.dispatch(f"Eye spy emitted pub message from {comp}")
+            proto_comp = Component(state, comp)
+            tstamp, state_msg = await proto_comp.from_pub(msg)
+            decoded = MessageToDict(state_msg,
+                                    including_default_value_fields=True,
+                                    preserving_proto_field_name=True)
+            # log event here
+            await self.queue.put([comp, decoded])
+
+    async def purge(self):
+        while not self.queue.empty():
+            self.queue.get_nowait()
+            self.queue.task_done()
+
     async def scry(self, component, condition, failure=None, timeout=None):
-        logging.dispatch(f"Scry process started for {component}")
+        logger.dispatch(f"Scry process started for {component}")
         if isinstance(component, str):
             self.subber.subscribe(f"state/{component}".encode('utf-8'))
 
@@ -72,27 +86,27 @@ class Sauron:
         timer = None
 
         async def test(sock, func):
-            logging.dispatch(f"Scry {component} - test starting")
+            logger.dispatch(f"Scry {component} - test starting")
             nonlocal interrupted, message, start, timer
             while True:
                 *topic, msg = await sock.recv_multipart()
-                logging.dispatch(f"Scry {component} - message received, checking")
+                logger.dispatch(f"Scry {component} - message received, checking")
                 state, comp = topic[0].decode("utf-8").split("/")
                 proto_comp = Component(state, comp)
                 tstamp, state_msg = await proto_comp.from_pub(msg)
                 decoded = MessageToDict(state_msg,
                                         including_default_value_fields=True,
                                         preserving_proto_field_name=True)
-                logging.debug(decoded)
+                logger.debug(decoded)
                 if func(decoded):
                     end = time.time()
                     timer = end - start
                     message = decoded
                     interrupted = True
-                    logging.dispatch(f"Scry {component} - check succeeded. Ending.")
+                    logger.dispatch(f"Scry {component} - check succeeded. Ending.")
                     return
                 else:
-                    logging.dispatch(f"Scry {component} - check failed. Continuing.")
+                    logger.dispatch(f"Scry {component} - check failed. Continuing.")
                     continue
 
         start = time.time()
@@ -108,7 +122,7 @@ class Sauron:
             await test(self.subber, condition)
 
         self.subber.unsubscribe(f"state/{component}")
-        logging.dispatch(f"Scry finished for {component}.")
+        logger.dispatch(f"Scry finished for {component}.")
         return interrupted, message, timer
 
 
@@ -116,7 +130,7 @@ class Request:
     @classmethod
     async def spawn(cls, request_type: str, component: str, body=None):
         self = Request()
-        logging.dispatch(f"{request_type} - {component} Initiating Request.")
+        logger.dispatch(f"{request_type} - {component} Initiating Request.")
         if request_type in ["SetParameters", "GetParameters"]:
             body_encode = Component('param', component, data=body)
             request = await body_encode.to_req()
@@ -124,13 +138,13 @@ class Request:
             body_encode = Component('state', component, data=body)
             request = await body_encode.to_req()
         else:
-            logging.error(f"Unsupported Request Type {request_type} for {component}")
+            logger.error(f"Unsupported Request Type {request_type} for {component}")
             raise
         self.request_type = request_type
         self.type_encode = RequestType[request_type].value.to_bytes(2, 'little')
         self.component = component
         self.body = request.SerializeToString()
-        logging.dispatch(f"{request_type} - {component} Req Serialized to String")
+        logger.dispatch(f"{request_type} - {component} Req Serialized to String")
         return self
 
 

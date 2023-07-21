@@ -37,6 +37,40 @@ class Morgoth:
         if interval_check.timeout != duration:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
+    async def set_light(self, interval=300):
+        self.sun = Sun()
+        await self.messenger.command(request_type="SetParameters",
+                                     component='house-light',
+                                     body={'clock_interval': interval},
+                                     caller=0)
+        interval_check = await self.messenger.command(request_type="GetParameters",
+                                                      component='house-light',
+                                                      body=None,
+                                                      caller=0)
+        if interval_check.clock_interval != interval:
+            logger.error(f"House-Light Clock Interval not set to {interval},"
+                         f" got {interval_check.clock_interval}")
+
+    async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
+        self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
+        logger.state("Requesting stimuli directory change")
+        await self.messenger.command(
+            request_type="SetParameters",
+            component='audio-playback',
+            body={'audio_dir': self.playback.dir}
+        )
+        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
+        dir_check = await self.messenger.command(
+            request_type="GetParameters",
+            component='audio-playback',
+            body=None,
+            timeout=100000
+        )
+        if dir_check.audio_dir != self.playback.dir:
+            logger.error(f"Auditory folder mismatch: got {dir_check.audio_dir} expected {self.playback.dir}")
+
+        self.playback.sample_rate = dir_check.sample_rate
+
     async def feed(self, delay=0):
         logger.state('feed() called, requesting stepper motor')
         await asyncio.sleep(delay)
@@ -79,20 +113,7 @@ class Morgoth:
         await asyncio.gather(a, b)
         return
 
-    async def keep_alight(self, interval=300):
-        self.sun = Sun()
-        await self.messenger.command(request_type="SetParameters",
-                                     component='house-light',
-                                     body={'clock_interval': interval},
-                                     caller=0)
-        interval_check = await self.messenger.command(request_type="GetParameters",
-                                                      component='house-light',
-                                                      body=None,
-                                                      caller=0)
-        if interval_check.clock_interval != interval:
-            logger.error(f"House-Light Clock Interval not set to {interval},"
-                         f" got {interval_check.clock_interval}")
-
+    async def light_cycle(self):
         while True:
             *topic, msg = await self.messenger.lighter.recv_multipart()
             logger.state(f"House-light - message received, checking")
@@ -136,26 +157,6 @@ class Morgoth:
         ))
         await asyncio.gather(a, b)
         logger.state("Returning house lights to cycle succeeded")
-
-    async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
-        self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
-        logger.state("Requesting stimuli directory change")
-        await self.messenger.command(
-            request_type="SetParameters",
-            component='audio-playback',
-            body={'audio_dir': self.playback.dir}
-        )
-        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
-        dir_check = await self.messenger.command(
-            request_type="GetParameters",
-            component='audio-playback',
-            body=None,
-            timeout=100000
-        )
-        if dir_check.audio_dir != self.playback.dir:
-            logger.error(f"Auditory folder mismatch: got {dir_check.audio_dir} expected {self.playback.dir}")
-
-        self.playback.sample_rate = dir_check.sample_rate
 
     async def play(self, stim=None):
         if stim is None:
