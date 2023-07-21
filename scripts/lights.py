@@ -9,7 +9,7 @@ import logging
 import argparse
 import zmq
 
-__exp__ = 'lights'
+__name__ = 'lights'
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -21,33 +21,30 @@ p.add_argument("--feed_interval", help="interval between feeding (in ms)",
 p.add_argument("--feed_duration", help="default feeding duration (in ms)",
                action='store', type=int, default=4000)
 args = p.parse_args()
+lincoln(log=f"{args.birdID}_{__name__}.log")
+decider = Morgoth()
 
 
 async def main():
-    context = zmq.Context()
-    # Check status of decide-rs
-    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
-    await lincoln(log=f"{args.birdID}_{__exp__}.log")
-    # House-lights
-    logging.info("Lights.py initiated")
-    light = await Sun.spawn(interval=300)
-    lightyear = asyncio.create_task(light.cycle())
+    await contact_host()
+
+    lights = asyncio.create_task(decider.keep_alight())
 
     await slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
 
     if args.feed:
         logger.info(f"Feeding requested at intervals of {args.feed_duration} ms. Setting parameters.")
-        await set_feeder(args.feed_duration)
+        await decider.set_feeder(duration=args.feed_duration)
         while True:
             logger.info("Feeding.")
-            await feed(args.feed_duration)
+            await decider.feed()
             await asyncio.sleep(args.feed_interval / 1000)  # sleep in seconds
     else:
-        asyncio.gather(lightyear, bg)
+        await lights
 
 
-if __name__ == "__main__":
+if __name__ == "lights":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
