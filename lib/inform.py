@@ -64,13 +64,24 @@ async def contact_host():
         logging.warning('Standalone Mode specified in config. Trials will not be logged')
 
 
-async def log_trial(msg: dict):
+async def post_host(msg: dict, target):
+    """
+    Send a POST request to the decide API specified in py_crust's config
+    :param msg: dictionary of data. address and time will be automatically filled out
+    :param target: 'trials' or 'events'
+    :return:
+    """
+    if type not in ['trials', 'events']:
+        logging.error(f"Specified type for decide API logging incorrect: {target}")
+        raise
     if CONTACT_HOST:
-        msg['addr'] = IDENTITY
-        msg['time'] = time.time()
+        msg.update({
+            'addr': IDENTITY,
+            'time': time.time()
+        })
         async with aiohttp.ClientSession as session:
             try:
-                async with session.post(url=f"{HIVEMIND}/trials/",
+                async with session.post(url=f"{HIVEMIND}/{target}/",
                                         json=msg,
                                         headers={'Content-Type': 'application/json'}
                                         ) as result:
@@ -78,10 +89,9 @@ async def log_trial(msg: dict):
                         reply = await result.json()
                         logging.error('POST Result Error from contacting Decide-Host:', reply)
                     else:
-                        logging.dispatch("Trial logged to DecideAPI.")
+                        logging.dispatch("Data logged to DecideAPI.")
             except aiohttp.ClientConnectionError as e:
                 logging.error('Could not contact Decide-Host:', str(e))
-    return
 
 
 async def slack(msg, usr=None):

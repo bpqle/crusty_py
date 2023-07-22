@@ -21,6 +21,7 @@ class Sauron:
         self.caller.connect(REQ_ENDPOINT)
 
         self.queue = asyncio.Queue()
+        self.light_q = asyncio.Queue()
         logger.dispatch("REQ and PUB sockets created.")
 
     async def command(self, request_type: str, component: str, body=None, timeout=TIMEOUT):
@@ -69,61 +70,21 @@ class Sauron:
                                     including_default_value_fields=True,
                                     preserving_proto_field_name=True)
             # log event here
-            await self.queue.put([comp, decoded])
+            msg = {
+                'name': comp,
+                'state': decoded.copy()
+            }
+            await post_host(msg, target='events')
+            # add to queue
+            if comp == 'house-light':
+                await self.light_q.put(decoded)
+            else:
+                await self.queue.put([comp, decoded])
 
     async def purge(self):
         while not self.queue.empty():
             self.queue.get_nowait()
             self.queue.task_done()
-
-    async def scry(self, component, condition, failure=None, timeout=None):
-        logger.dispatch(f"Scry process started for {component}")
-        if isinstance(component, str):
-            self.subber.subscribe(f"state/{component}".encode('utf-8'))
-
-        interrupted = False
-        message = None
-        timer = None
-
-        async def test(sock, func):
-            logger.dispatch(f"Scry {component} - test starting")
-            nonlocal interrupted, message, start, timer
-            while True:
-                *topic, msg = await sock.recv_multipart()
-                logger.dispatch(f"Scry {component} - message received, checking")
-                state, comp = topic[0].decode("utf-8").split("/")
-                proto_comp = Component(state, comp)
-                tstamp, state_msg = await proto_comp.from_pub(msg)
-                decoded = MessageToDict(state_msg,
-                                        including_default_value_fields=True,
-                                        preserving_proto_field_name=True)
-                logger.debug(decoded)
-                if func(decoded):
-                    end = time.time()
-                    timer = end - start
-                    message = decoded
-                    interrupted = True
-                    logger.dispatch(f"Scry {component} - check succeeded. Ending.")
-                    return
-                else:
-                    logger.dispatch(f"Scry {component} - check failed. Continuing.")
-                    continue
-
-        start = time.time()
-        if timeout is not None:
-            try:
-                await asyncio.wait_for(test(self.subber, condition), timeout)
-            except asyncio.exceptions.TimeoutError:
-                message = None
-                timer = timeout
-                if failure is not None:
-                    failure(component)
-        else:
-            await test(self.subber, condition)
-
-        self.subber.unsubscribe(f"state/{component}")
-        logger.dispatch(f"Scry finished for {component}.")
-        return interrupted, message, timer
 
 
 class Request:

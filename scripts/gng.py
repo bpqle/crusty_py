@@ -77,7 +77,7 @@ async def await_init():
     def peck_init(key_msg):
         if (await_input in key_msg) and (key_msg[await_input]):
             return True
-    await decider.messenger.scry(
+    await decider.scry(
         'peck-keys',
         condition=peck_init,
     )
@@ -109,7 +109,7 @@ async def await_response(stim_data, correction):
                 return True
         return False
 
-    responded, _, rtime = await decider.messenger.scry(
+    responded, _, rtime = await decider.scry(
         'peck-keys',
         condition=resp_check,
         timeout=params['response_duration']
@@ -148,7 +148,7 @@ async def complete(cue_loc, stim_data, correction, response, rtime):
         'stimulus': stim_data['name']
     })
     logger.info(f"Trial {state['trial']} completed. Logging trial.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     # Advance
     if (response == 'timeout') & params['correction_timeout']:
         correction += 1
@@ -175,7 +175,7 @@ async def main():
     # Start logging
     await contact_host()
 
-    asyncio.create_task(decider.keep_alight())
+    asyncio.create_task(decider.light_cycle())
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
 

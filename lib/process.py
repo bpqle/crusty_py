@@ -24,6 +24,46 @@ class Morgoth:
             self.messenger = Sauron()
         logger.state("Apparatus-class Object created. Praise Dan.")
 
+    async def scry(self, component, condition, failure=None, timeout=None):
+        logger.state(f"Scry process started for {component}, purging queue")
+        await self.messenger.purge()
+        interrupted = False
+        message = None
+        timer = None
+
+        async def test(func):
+            nonlocal interrupted, message, start, timer
+            while True:
+                logger.state(f"Scry {component} - test found message in queue")
+                comp, state = await self.messenger.queue.get()
+                if (comp == component) & func(state):
+                    end = time.time()
+                    timer = end - start
+                    message = state
+                    interrupted = True
+                    logger.state(f"Scry {component} - check succeeded. Ending.")
+                    self.messenger.queue.task_done()
+                    return
+                else:
+                    logger.state(f"Scry {component} - check failed. Continuing.")
+                    self.messenger.queue.task_done()
+                    continue
+
+        start = time.time()
+        if timeout is not None:
+            try:
+                await asyncio.wait_for(test(condition), timeout)
+            except asyncio.exceptions.TimeoutError:
+                message = None
+                timer = timeout
+                if failure is not None:
+                    failure(component)
+        else:
+            await test(condition)
+
+        logger.state(f"Scry finished for {component}.")
+        return interrupted, message, timer
+
     async def set_feeder(self, duration):
         logger.state("Setting feed duration")
         await self.messenger.command(request_type="SetParameters",
@@ -72,9 +112,9 @@ class Morgoth:
         self.playback.sample_rate = dir_check.sample_rate
 
     async def feed(self, delay=0):
-        logger.state('feed() called, requesting stepper motor')
+        logger.state('Feed requested')
         await asyncio.sleep(delay)
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             'stepper-motor',
             condition=lambda p: p['running'],
             failure=pub_err,
@@ -87,7 +127,7 @@ class Morgoth:
         ))
         await asyncio.gather(a, b)
         logger.state('feeding confirmed by decide-rs, awaiting motor stop')
-        await self.messenger.scry(
+        await self.scry(
             'stepper-motor',
             condition=lambda pub: not pub['running'],
             failure=pub_err,
@@ -99,7 +139,7 @@ class Morgoth:
     async def cue(self, loc, color):
         pos = peck_parse(loc, mode='l')
         logger.state(f'Requesting cue {pos}')
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             pos,
             condition=lambda pub: pub['led_state'] == color,
             failure=pub_err,
@@ -115,19 +155,14 @@ class Morgoth:
 
     async def light_cycle(self):
         while True:
-            *topic, msg = await self.messenger.lighter.recv_multipart()
-            logger.state(f"House-light - message received, checking")
-            state, comp = topic[0].decode("utf-8").split("/")
-            proto_comp = Component(state, comp)
-            tstamp, state_msg = await proto_comp.from_pub(msg)
-            decoded = MessageToDict(state_msg,
-                                    including_default_value_fields=True,
-                                    preserving_proto_field_name=True)
+            decoded = await self.messenger.light_q.get()
             self.sun.update(decoded)
+            self.messenger.light_q.task_done()
+            logger.state("House-light state updated")
 
     async def blip(self, duration, brightness=0):
         logger.state("Manually changing house lights")
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             'house-light',
             condition=lambda pub: True if pub['brightness'] == brightness else False,
             failure=pub_err,
@@ -142,10 +177,10 @@ class Morgoth:
         await asyncio.gather(a, b)
         logger.state("Manually changing house lights confirmed by decide-rs.")
 
-        await asyncio.sleep(duration/1000)
+        await asyncio.sleep(duration / 1000)
 
         logger.state("Returning house lights to cycle")
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             'house-light',
             condition=lambda pub: not pub['manual'],
             failure=pub_err,
@@ -162,7 +197,7 @@ class Morgoth:
         if stim is None:
             stim = self.playback.stimulus
         logger.state(f"Playback of {stim} requested")
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: (msg['audio_id'] == stim) & (msg['playback'] == 1),
             failure=pub_err,
@@ -179,7 +214,7 @@ class Morgoth:
         frame_count = pub['frame_count']
         stim_duration = frame_count / self.playback.sample_rate
 
-        handle = asyncio.create_task(self.messenger.scry(
+        handle = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: (msg['playback'] == 0),
             failure=pub_err,
@@ -188,7 +223,7 @@ class Morgoth:
         return stim_duration, handle
 
     async def stop(self):
-        a = asyncio.create_task(self.messenger.scry(
+        a = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: (msg['playback'] == 0),
             failure=pub_err,
