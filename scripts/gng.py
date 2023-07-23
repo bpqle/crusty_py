@@ -5,7 +5,6 @@ import argparse
 import asyncio
 import logging
 import random
-from google.protobuf.json_format import MessageToDict
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
@@ -197,5 +196,5 @@ if __name__ == "gng":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("SIGINT Detected, shutting down.")
-        asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))
+        asyncio.run(slack("PyCrust gng is shutting down", usr=args.user))
 

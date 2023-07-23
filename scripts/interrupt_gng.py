@@ -1,10 +1,10 @@
 #!/usr/bin/python3
 import os
 import sys
+
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
-from google.protobuf.json_format import MessageToDict
 import argparse
 import asyncio
 import logging
@@ -26,7 +26,6 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
 args = p.parse_args()
-
 
 state = {
     'subject': args.birdID,  # logged
@@ -50,61 +49,60 @@ params = {
     'min_iti': 15,
     'init_key': args.init_position,
 }
+lincoln(log=f"{args.birdID}_{__name__}.log")
+decider = Morgoth()
 
 
 async def await_init():
     await_input = peck_parse(params['init_key'], 'r')
 
     def peck_init(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        if (await_input in pecked) and (pecked[await_input]):
+        if (await_input in key_state) and (key_state[await_input]):
             return True
-    await catch('peck-keys',
-                caught=peck_init)
+
+    await decider.scry(
+        'peck-keys',
+        condition=peck_init,
+    )
 
 
-async def present_stim(pb, stim_data):
-    dur, _ = pb.play(stim_data['name'])
+async def present_stim(stim_data):
+    dur, _ = decider.play(stim_data['name'])
     return dur
 
 
-async def await_respond(pb, stim_data, duration):
+async def await_respond(stim_data, duration):
     # await cue(pb.current_cue(), params['cue_color'])
     response = 'timeout'
 
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        nonlocal response
+        for k, v in key_state.items():
             if v & (k in stim_data):
-                pb.stop()
+                asyncio.create_task(decider.stop())
+                response = k
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=duration or params['response_duration'])
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=duration or params['response_duration'])
 
     if not responded:
         return response, None
     else:
-        for key, val in MessageToDict(msg, preserving_proto_field_name=True).items():
-            if val & (key in stim_data):
-                response = key
         return response, rtime
 
 
-async def complete(playback, stim_data, response, rtime):
+async def complete(stim_data, response, rtime):
     # Determine outcome
     outcome = stim_data['responses'][response]
     rand = random.random()
+    result = 'no_feed'
     if outcome['reinforced']:
         if outcome['p_reward'] >= rand:
-            await feed(params['feed_duration'], params['feed_delay'])
-        result = 'feed'
-    else:
-        result = 'no_feed'
+            await decider.feed(params['feed_delay'])
+            result = 'feed'
     # Log Trial
     state.update({
         'trial': state.get('trial', 0) + 1,
@@ -115,38 +113,30 @@ async def complete(playback, stim_data, response, rtime):
         'stimulus': stim_data['name']
     })
     logger.info(f"Trial {state['trial']} completed. Logging trial.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     # Advance
-    stim_data = playback.next()
+    stim_data = decider.playback.next()
     return stim_data
 
 
 async def main():
-    context = zmq.Context()
-    # Check status of decide-rs
-    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
-    await lincoln(log=f"{args.birdID}_{__name__}.log")
-    logging.info("GNG.py initiated")
+    await contact_host()
 
-    light = await Sun.spawn(interval=300)
-    asyncio.create_task(light.cycle())
+    asyncio.create_task(decider.light_cycle())
+    await decider.set_feeder(duration=params['feed_duration'])
+    await decider.init_playback(args.config, replace=args.replace)
+    stim_data = decider.playback.next()
 
-    playback = await JukeBox.spawn(args.config,
-                                   shuffle=True,
-                                   replace=params['replace'])
-    correction = 0
-    stim_data = playback.next()
-
-    await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
+    await slack(f"interrupt_gng.py initiated on {IDENTITY}", usr=args.user)
 
     response = None
     while True:
         if response and (response == 'timeout'):
             await await_init()
-        duration = await present_stim(playback, stim_data)
-        response, rtime = await await_respond(playback, stim_data, duration)
-        stim_data, correction = await complete(playback, stim_data, response, rtime)
+        duration = await present_stim(stim_data)
+        response, rtime = await await_respond(stim_data, duration)
+        stim_data, correction = await complete(stim_data, response, rtime)
 
 
 if __name__ == "__gng__":
@@ -155,4 +145,3 @@ if __name__ == "__gng__":
     except KeyboardInterrupt:
         logger.warning("SIGINT Detected, shutting down.")
         asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))
-

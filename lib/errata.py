@@ -10,6 +10,10 @@ def rep_err(msg=None, comp=None, e=None):
             raise e(f"{msg}, component {comp}")
     else:
         if msg is None:
-            raise f"Error awaiting reply from decide-rs, component {comp}"
+            raise Exception(f"Error awaiting reply from decide-rs, component {comp}")
         else:
-            raise f"{msg}, component {comp}"
+            raise Exception(f"{msg}, component {comp}")
+
+
+def experiment_err(msg=None):
+    raise RuntimeError(msg)

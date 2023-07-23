@@ -1,17 +1,16 @@
 #!/usr/bin/python3
 import os
 import sys
+
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
-from google.protobuf.json_format import MessageToDict
 import argparse
 import asyncio
-import time
 import logging
 import random
 
-__exp__ = 'shape'
+__name__ = 'shape'
 
 p = argparse.ArgumentParser()
 p.add_argument("user")
@@ -23,7 +22,7 @@ p.add_argument("--color", help="set color of cues",
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
 p.add_argument('--response_position', help="follow-up positions after initial peck",
-               nargs='+', default=['left','right'])
+               nargs='+', default=['left', 'right'])
 p.add_argument("-T", "--trials", help="length of blocks 2-3", action='store', default=100)
 p.add_argument('--feed_delay', help='time (in ms) to wait between response and feeding',
                action='store', default=0)
@@ -51,26 +50,28 @@ params = {
     'feed_duration': args.feed_duration,
     'iti_min': 240  # with some variance
 }
+lincoln(log=f"{args.birdID}_{__name__}.log")
+decider = Morgoth()
 
 
 async def main():
-    context = zmq.Context()
-    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
+    # Start logging
+    await contact_host()
 
-    await lincoln(log=f"{args.birdID}_{__name__}.log")
-    logger.info("shape.py initiated")
+    asyncio.create_task(decider.light_cycle())
+    await decider.set_feeder(duration=params['feed_duration'])
 
-    lights = await Sun.spawn(interval=300)
-    await set_feeder(duration=params['feed_duration'])
-
-    if (args.fforward) or (args.block == 4):
+    if args.fforward or (args.block == 4):
         state['block'] = 4
     else:
         state['block'] = args.block
 
+    logging.info("Shape.py initiated")
+    await slack(f"Shape.py initiated on {IDENTITY}", usr=args.user)
+
     while True:
         logger.info(f"Block is {state['block']}")
-        if not lights.daytime:
+        if not decider.sun.daytime:
             logger.info("Paused")
             await asyncio.sleep(300)  # seconds
             continue
@@ -96,12 +97,12 @@ async def block0_feeder():
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await feed(delay=params['feed_delay'])
+    await decider.feed(delay=params['feed_delay'])
     state.update({
         'trial': state.get('trial', 0) + 1,
     })
     logger.info(f"Trial {state['trial']} completed. Logging trial.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
 
     await asyncio.sleep(iti)
     if state['trial'] + 1 > params['block_length']:
@@ -113,31 +114,29 @@ async def block0_feeder():
 
 async def block1_patience():
     iti_var = 60
-    await_input = peck_parse(params['init_position'] ,'r')
-    cue_pos = peck_parse(params['init_position'] ,'l')
+    await_input = peck_parse(params['init_position'], 'r')
+    cue_pos = peck_parse(params['init_position'], 'l')
 
     iti = int(params['iti_min'] + random.random() * iti_var)
 
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await cue(cue_pos, params['cue_color'])
+    await decider.cue(cue_pos, params['cue_color'])
 
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == await_input):
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=params['response_duration'])
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=params['response_duration'])
 
     # feed regardless of response
-    await cue(cue_pos, 'off')
-    await feed(delay=params['feed_delay'])
+    await decider.cue(cue_pos, 'off')
+    await decider.feed(delay=params['feed_delay'])
 
     if responded:
         logger.info("Bird pecked during block 1! Immediately advancing to block 2")
@@ -156,7 +155,7 @@ async def block1_patience():
         })
 
     logger.info(f"Trial {state['trial']} completed.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
     if responded or (state['trial'] + 1 > params['block_length']):
@@ -175,24 +174,22 @@ async def block2_peck():
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await cue(cue_pos, params['cue_color'])
+    await decider.cue(cue_pos, params['cue_color'])
 
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == await_input):
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=None)
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=None)
 
     # feed regardless of response
-    await cue(await_input, 'off')
+    await decider.cue(await_input, 'off')
     if responded:  # should always be True in this block
-        await feed(delay=params['feed_delay'])
+        await decider.feed(delay=params['feed_delay'])
         state.update({
             'trial': state.get('trial', 0) + 1,
             'result': 'feed',
@@ -200,7 +197,7 @@ async def block2_peck():
             'rtime': rtime,
         })
         logger.info(f"Trial {state['trial']} completed.")
-        await log_trial(msg=state.copy())
+        await post_host(msg=state.copy(), target='trials')
         await asyncio.sleep(iti)
 
         if state['trial'] + 1 > params['block_length']:
@@ -211,45 +208,45 @@ async def block2_peck():
     else:
         raise Exception("Block 2 passed without any response!")
 
+
 async def block3_extend():
     iti_var = 15
     iti = int(random.random() * iti_var)
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
 
-    await_input = peck_parse(params['init_position'] ,'r')
-    cue_pos = peck_parse(params['init_position'] ,'l')
-    await cue(cue_pos, params['cue_color'])
+    await_input = peck_parse(params['init_position'], 'r')
+    cue_pos = peck_parse(params['init_position'], 'l')
+    await decider.cue(cue_pos, params['cue_color'])
+
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == await_input):
                 return True
         return False
-    await catch('peck-keys',
-                caught=resp_check,
-                timeout=None)
-    await cue(cue_pos, 'off')
+
+    await decider.scry('peck-keys',
+                       condition=resp_check,
+                       timeout=None)
+    await decider.cue(cue_pos, 'off')
 
     cue2 = pick(params['response_position'])
     second_input = peck_parse(cue2, 'r')
     second_cue = peck_parse(cue2, 'l')
-    await cue(second_cue, params['cue_color'])
+    await decider.cue(second_cue, params['cue_color'])
+
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == second_input):
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=None)
-    await cue(second_cue, 'off')
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=None)
+    await decider.cue(second_cue, 'off')
 
-    await feed(delay=params['feed_delay'])
+    await decider.feed(delay=params['feed_delay'])
 
     state.update({
         'trial': state.get('trial', 0) + 1,
@@ -258,7 +255,7 @@ async def block3_extend():
         'rtime': rtime,
     })
     logger.info(f"Trial {state['trial']} completed.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
     if state['trial'] + 1 > params['block_length']:
@@ -275,32 +272,31 @@ async def block4_auton():
         logger.info(f"Entering block {state['block']}")
 
     await_input = peck_parse(params['init_position'], 'r')
+
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == await_input):
                 return True
         return False
-    await catch('peck-keys',
-                caught=resp_check,
-                timeout=None)
+
+    await decider.scry('peck-keys',
+                       condition=resp_check,
+                       timeout=None)
 
     cue2 = pick(params['response_position'])
     second_input = peck_parse(cue2, 'r')
+
     def resp_check(key_state):
-        pecked = MessageToDict(key_state,
-                               preserving_proto_field_name=True)
-        for k, v in pecked.items():
+        for k, v in key_state.items():
             if v & (k == second_input):
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=None)
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=None)
 
-    await feed(delay=params['feed_delay'])
+    await decider.feed(delay=params['feed_delay'])
 
     state.update({
         'trial': state.get('trial', 0) + 1,
@@ -309,7 +305,7 @@ async def block4_auton():
         'rtime': rtime,
     })
     logger.info(f"Trial {state['trial']} completed.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
     if state['trial'] == params['block_length']:
@@ -319,10 +315,10 @@ async def block4_auton():
 
 
 def pick(group):
-    return group[int(random.random() // (1/len(group)))]
+    return group[int(random.random() // (1 / len(group)))]
 
 
-if __exp__ == 'shape':
+if __name__ == 'shape':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

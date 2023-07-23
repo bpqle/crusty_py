@@ -4,7 +4,8 @@ import aiohttp
 import sys
 import time
 import os
-
+import json
+from pythonjsonlogger import jsonlogger
 
 with open("/root/.config/py_crust/config.yml", "r") as f:
     try:
@@ -21,27 +22,38 @@ LOCAL_LOG = config['LOCAL_LOG']
 CONTACT_HOST = config['CONTACT_HOST']
 HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
+HOST_LOG = None
+
+logger = logging.getLogger('main')
 
 
-def lincoln(log, level=logging.DEBUG):
+def lincoln(log, level='DEBUG'):
+    decide_logger = logging.getLogger('host')
+    main = logging.getLogger('main')
+
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     streamer = logging.StreamHandler(sys.stdout)
     streamer.setFormatter(formatter)
-    filer = logging.FileHandler(log, mode='w')
+    main.setLevel(level)
+    main.addHandler(streamer)
+    if LOCAL_LOG:
+        filer = logging.FileHandler(log, mode='w')
+        filer.setFormatter(formatter)
+        main.addHandler(filer)
 
-    handlers = [filer, streamer] if LOCAL_LOG else [streamer]
-    filer.setFormatter(formatter)
-    logging.basicConfig(
-        level=level,
-        handlers=handlers
-    )
-    logging.debug(f"Logging to file {log}. Connecting to DecideAPI")
+    global HOST_LOG
+    HOST_LOG = f"{__name__}_{log}"
+    host_logs = logging.FileHandler(HOST_LOG, mode='w')
+    host_logs.setFormatter(jsonlogger.JsonFormatter())
+    decide_logger.addHandler(host_logs)
+
+    main.debug(f"Logging to file {log}. Connecting to DecideAPI")
     # Proto is reserved for basic communication protocols of protobuf found in decrypt.py
-    add_log_lvl('PROTO', 11, 'proto')
+    add_log_lvl('PROTO', 11, 'proto', lgr=main)
     # Dispatch is reserved for zmq operations found in dispatch.py
-    add_log_lvl('DISPATCH', 12, 'dispatch')
+    add_log_lvl('DISPATCH', 12, 'dispatch', lgr=main)
     # State is reserved for state-machine operations found in process.py
-    add_log_lvl('STATE', 13, 'state')
+    add_log_lvl('STATE', 13, 'state', lgr=main)
 
 
 async def contact_host():
@@ -71,8 +83,9 @@ async def post_host(msg: dict, target):
     :param target: 'trials' or 'events'
     :return:
     """
-    if type not in ['trials', 'events']:
-        logging.error(f"Specified type for decide API logging incorrect: {target}")
+    host_logger = logging.getLogger('host')
+    if target not in ['trials', 'events']:
+        logger.error(f"Specified type for decide API logging incorrect: {target}")
         raise
     if CONTACT_HOST:
         msg.update({
@@ -87,11 +100,25 @@ async def post_host(msg: dict, target):
                                         ) as result:
                     if result.status != 200:
                         reply = await result.json()
-                        logging.error('POST Result Error from contacting Decide-Host:', reply)
+                        logger.error('POST Result Error from contacting Decide-Host:', reply)
+                        if target == 'trials':
+                            host_logger.warning(msg)
                     else:
-                        logging.dispatch("Data logged to DecideAPI.")
+                        logger.dispatch("Data logged to DecideAPI.")
+                        await post_dropped()
             except aiohttp.ClientConnectionError as e:
-                logging.error('Could not contact Decide-Host:', str(e))
+                logger.error('Could not contact Decide-Host:', str(e))
+                if target == 'trials':
+                    host_logger.warning(msg)
+
+
+async def post_dropped():
+    with open(HOST_LOG, 'rb') as file:
+        if file.read(2) != '[]':
+            trials = json.load(file)
+            for t in trials:
+                await post_host(t, 'trials')
+            os.remove(HOST_LOG)
 
 
 async def slack(msg, usr=None):
@@ -118,31 +145,33 @@ async def slack(msg, usr=None):
 
 # The following function is taken from https://stackoverflow.com/questions/2183233
 # Checkout module haggis for more information
-def add_log_lvl(name, num, method_name=None):
+def add_log_lvl(name, num, method_name, lgr=None):
     """
     Comprehensively adds a new logging level to the `logging` module and the
     currently configured logging class.
     """
     if not method_name:
         method_name = name.lower()
+    if lgr is None:
+        lgr = logging.getLogger('main')
 
-    if hasattr(logging, name):
+    if hasattr(lgr, name):
         raise AttributeError('{} already defined in logging module'.format(name))
-    if hasattr(logging, method_name):
+    if hasattr(lgr, method_name):
         raise AttributeError('{} already defined in logging module'.format(method_name))
-    if hasattr(logging.getLoggerClass(), method_name):
+    if hasattr(lgr.getLoggerClass(), method_name):
         raise AttributeError('{} already defined in logger class'.format(method_name))
 
     def logForLevel(self, message, *args, **kwargs):
         if self.isEnabledFor(num):
             self._log(num, message, args, **kwargs)
     def logToRoot(message, *args, **kwargs):
-        logging.log(num, message, *args, **kwargs)
+        lgr.log(num, message, *args, **kwargs)
 
-    logging.addLevelName(num, name)
-    setattr(logging, name, num)
-    setattr(logging.getLoggerClass(), method_name, logForLevel)
-    setattr(logging, method_name, logToRoot)
+    lgr.addLevelName(num, name)
+    setattr(lgr, name, num)
+    setattr(lgr.getLoggerClass(), method_name, logForLevel)
+    setattr(lgr, method_name, logToRoot)
 
 
 # This function maintains sanity
@@ -154,7 +183,7 @@ def peck_parse(phrase, mode):
     :param mode: 'l' for led, 'r' for key/response
     :return:
     """
-    logging.debug(f"Phrase received is {phrase}")
+    logger.debug(f"Phrase received is {phrase}")
     if mode in ['led', 'l', 'leds']:
         if 'left' in phrase:
             return 'peck_led_left'
