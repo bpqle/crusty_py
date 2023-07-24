@@ -10,7 +10,7 @@ from google.protobuf.json_format import MessageToDict
 import asyncio
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('main')
 
 
 class Morgoth:
@@ -42,20 +42,22 @@ class Morgoth:
                     message = state
                     interrupted = True
                     logger.state(f"Scry {component} - check succeeded. Ending.")
-                    self.messenger.queue.task_done()
+                    # self.messenger.queue.task_done()
                     return
                 else:
                     logger.state(f"Scry {component} - check failed. Continuing.")
-                    self.messenger.queue.task_done()
+                    # self.messenger.queue.task_done()
+                    if comp != component:
+                        await self.messenger.queue.put([comp, state])
                     continue
 
         start = time.time()
         if timeout is not None:
             try:
-                await asyncio.wait_for(test(condition), timeout)
+                await asyncio.wait_for(test(condition), timeout/1000)
             except asyncio.exceptions.TimeoutError:
                 message = None
-                timer = timeout
+                timer = timeout/1000
                 if failure is not None:
                     failure(component)
         else:
@@ -74,22 +76,20 @@ class Morgoth:
         interval_check = await self.messenger.command(request_type="GetParameters",
                                                       component='stepper-motor',
                                                       body=None)
-        if interval_check.timeout != duration:
+        if int(interval_check['timeout']) != duration:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
     async def set_light(self, interval=300):
         self.sun = Sun()
         await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
-                                     body={'clock_interval': interval},
-                                     caller=0)
+                                     body={'clock_interval': interval})
         interval_check = await self.messenger.command(request_type="GetParameters",
                                                       component='house-light',
-                                                      body=None,
-                                                      caller=0)
-        if interval_check.clock_interval != interval:
+                                                      body=None)
+        if int(interval_check['clock_interval']) != interval:
             logger.error(f"House-Light Clock Interval not set to {interval},"
-                         f" got {interval_check.clock_interval}")
+                         f" got {interval_check['clock_interval']}")
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
         self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
@@ -106,17 +106,18 @@ class Morgoth:
             body=None,
             timeout=100000
         )
-        if dir_check.audio_dir != self.playback.dir:
-            logger.error(f"Auditory folder mismatch: got {dir_check.audio_dir} expected {self.playback.dir}")
+        # if dir_check['audio_dir'] != self.playback.dir:
+        #     logger.error(f"Auditory folder mismatch: got {dir_check['audio_dir']} expected {self.playback.dir}")
 
-        self.playback.sample_rate = dir_check.sample_rate
+        self.playback.sample_rate = dir_check['sample_rate']
+        logger.state(f"Got sampling rate {dir_check['sample_rate']}")
 
     async def feed(self, delay=0):
         logger.state('Feed requested')
         await asyncio.sleep(delay)
         a = asyncio.create_task(self.scry(
             'stepper-motor',
-            condition=lambda p: p['running'],
+            condition=lambda pub: ('running' in pub) and (pub['running']),
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -129,9 +130,9 @@ class Morgoth:
         logger.state('feeding confirmed by decide-rs, awaiting motor stop')
         await self.scry(
             'stepper-motor',
-            condition=lambda pub: not pub['running'],
+            condition=lambda pub: ('running' in pub) and (not pub['running']),
             failure=pub_err,
-            timeout=TIMEOUT
+            timeout=8000
         )
         logger.state('motor stop confirmed by decide-rs')
         return
@@ -141,7 +142,7 @@ class Morgoth:
         logger.state(f'Requesting cue {pos}')
         a = asyncio.create_task(self.scry(
             pos,
-            condition=lambda pub: pub['led_state'] == color,
+            condition=lambda pub: ('led_state' in pub) and (pub['led_state'] == color),
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -153,18 +154,21 @@ class Morgoth:
         await asyncio.gather(a, b)
         return
 
+    async def cues_off(self):
+        for pos in ['peck-leds-left','peck-leds-right','peck-leds-center']:
+            await self.cue(pos, 'off')
+
     async def light_cycle(self):
         while True:
             decoded = await self.messenger.light_q.get()
             self.sun.update(decoded)
-            self.messenger.light_q.task_done()
             logger.state("House-light state updated")
 
     async def blip(self, duration, brightness=0):
         logger.state("Manually changing house lights")
         a = asyncio.create_task(self.scry(
             'house-light',
-            condition=lambda pub: True if pub['brightness'] == brightness else False,
+            condition=lambda pub: True if ('brightness' in pub) and (pub['brightness'] == brightness) else False,
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -182,7 +186,7 @@ class Morgoth:
         logger.state("Returning house lights to cycle")
         a = asyncio.create_task(self.scry(
             'house-light',
-            condition=lambda pub: not pub['manual'],
+            condition=lambda pub: ('manual' in pub) and (not pub['manual']),
             failure=pub_err,
         ))
         b = asyncio.create_task(self.messenger.command(
@@ -199,7 +203,10 @@ class Morgoth:
         logger.state(f"Playback of {stim} requested")
         a = asyncio.create_task(self.scry(
             'audio-playback',
-            condition=lambda msg: (msg['audio_id'] == stim) & (msg['playback'] == 1),
+            condition=lambda msg: ('audio_id' in msg)
+                                  and ('playback' in msg)
+                                  and (msg['audio_id'] == stim)
+                                  and (msg['playback'] == 1),
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -216,7 +223,7 @@ class Morgoth:
 
         handle = asyncio.create_task(self.scry(
             'audio-playback',
-            condition=lambda msg: (msg['playback'] == 0),
+            condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
             failure=pub_err,
             timeout=stim_duration + TIMEOUT
         ))
@@ -225,7 +232,7 @@ class Morgoth:
     async def stop(self):
         a = asyncio.create_task(self.scry(
             'audio-playback',
-            condition=lambda msg: (msg['playback'] == 0),
+            condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
             failure=pub_err,
             timeout=TIMEOUT
         ))

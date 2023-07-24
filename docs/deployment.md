@@ -15,4 +15,6 @@ All proto files can be compiled at once using
 This will generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./lib/generator_hex` for class reference.
 
 
-```rsync -av -e ssh --exclude='.*' ./py_crust/ dimmabone:/root/py_crust/```
+```
+rsync -av -e ssh --exclude='.*' ./py_crust/ dimmabone:/root/py_crust/
+```

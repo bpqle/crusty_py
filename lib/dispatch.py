@@ -7,7 +7,7 @@ from .decrypt import Component
 from lib.generator_hex import decide_pb2 as dc_db
 from google.protobuf.json_format import MessageToDict
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('main')
 
 
 class Sauron:
@@ -52,8 +52,11 @@ class Sauron:
                 any_params = rep_template.params
                 part = Component('param', component)
                 params = await part.from_any(any_params)
+                decoded = MessageToDict(params,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
                 logger.dispatch(f" Response {request_type} - {component} params parsed")
-                return params
+                return decoded
         else:  # timeout awaiting response
             logger.error(f"{request_type} - {component}"
                          f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
@@ -76,15 +79,14 @@ class Sauron:
             }
             await post_host(msg, target='events')
             # add to queue
+            await self.queue.put([comp, decoded])
             if comp == 'house-light':
                 await self.light_q.put(decoded)
-            else:
-                await self.queue.put([comp, decoded])
 
     async def purge(self):
         while not self.queue.empty():
             self.queue.get_nowait()
-            self.queue.task_done()
+            # self.queue.task_done()
 
 
 class Request:

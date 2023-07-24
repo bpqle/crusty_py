@@ -14,3 +14,5 @@ any_msg.Unpack(msg)
 return msg
 ```
 However, Unpacking can fail silently by returning false
+
+init_playback() in process.py will throw an error if we GetParams from the audio-playback component right after requesting a SetParams to change playback directory. This does not mean that the request failed to set the new directory.

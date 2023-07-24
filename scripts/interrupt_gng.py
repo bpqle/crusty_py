@@ -10,11 +10,11 @@ import asyncio
 import logging
 import random
 
-__name__ = 'interrupt_gng'
+__name__ = 'interrupt-gng'
 
 p = argparse.ArgumentParser()
-p.add_argument("user")
 p.add_argument("birdID")
+p.add_argument("user")
 p.add_argument("config")
 p.add_argument("--response_duration", help="response window duration (in ms)",
                action='store', default=6000)
@@ -25,6 +25,7 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
                action='store', default=0)
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
+p.add_argument('--log_level', default='INFO')
 args = p.parse_args()
 
 state = {
@@ -49,8 +50,8 @@ params = {
     'min_iti': 15,
     'init_key': args.init_position,
 }
-lincoln(log=f"{args.birdID}_{__name__}.log")
-decider = Morgoth()
+lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
+logger = logging.getLogger('main')
 
 
 async def await_init():
@@ -121,13 +122,18 @@ async def complete(stim_data, response, rtime):
 
 async def main():
     # Start logging
+    global decider
+    decider = Morgoth()
     await contact_host()
+    asyncio.create_task(decider.messenger.eye())
 
-    asyncio.create_task(decider.light_cycle())
+    await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
+    asyncio.create_task(decider.light_cycle())
     stim_data = decider.playback.next()
 
+    logger.info("interrupt_gng.py initiated")
     await slack(f"interrupt_gng.py initiated on {IDENTITY}", usr=args.user)
 
     response = None
@@ -139,7 +145,7 @@ async def main():
         stim_data, correction = await complete(stim_data, response, rtime)
 
 
-if __name__ == "__gng__":
+if __name__ == "interrupt-gng":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

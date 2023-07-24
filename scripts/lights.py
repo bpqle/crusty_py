@@ -9,45 +9,49 @@ import logging
 import argparse
 import zmq
 
-__exp__ = 'lights'
+__name__ = 'lights'
 
 p = argparse.ArgumentParser()
-p.add_argument("user")
 p.add_argument("birdID")
+p.add_argument("user")
 p.add_argument("--feed", help="run food motor at defined interval",
                action='store_true')
 p.add_argument("--feed_interval", help="interval between feeding (in ms)",
                action='store', type=int, default=30000)
 p.add_argument("--feed_duration", help="default feeding duration (in ms)",
                action='store', type=int, default=4000)
+p.add_argument('--log_level', default='INFO')
 args = p.parse_args()
+
+lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
+logger = logging.getLogger('main')
 
 
 async def main():
-    context = zmq.Context()
-    # Check status of decide-rs
-    bg = asyncio.create_task(stayin_alive(address=IDENTITY, user=args.user))
     # Start logging
-    await lincoln(log=f"{args.birdID}_{__exp__}.log")
+    global decider
+    decider = Morgoth()
+    await contact_host()
     # House-lights
+    await decider.set_light()
+    lights = asyncio.create_task(decider.light_cycle())
+
     logging.info("Lights.py initiated")
-    light = await Sun.spawn(interval=300)
-    lightyear = asyncio.create_task(light.cycle())
 
     await slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
 
     if args.feed:
         logger.info(f"Feeding requested at intervals of {args.feed_duration} ms. Setting parameters.")
-        await set_feeder(args.feed_duration)
+        await decider.set_feeder(duration=int(args.feed_duration))
         while True:
             logger.info("Feeding.")
-            await feed(args.feed_duration)
-            await asyncio.sleep(args.feed_interval / 1000)  # sleep in seconds
+            await decider.feed()
+            await asyncio.sleep(int(args.feed_interval) / 1000)  # sleep in seconds
     else:
-        asyncio.gather(lightyear, bg)
+        await lights
 
 
-if __name__ == "__main__":
+if __name__ == "lights":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

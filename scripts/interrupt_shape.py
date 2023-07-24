@@ -10,11 +10,11 @@ import asyncio
 import logging
 import random
 
-__name__ = 'interrupt_shape'
+__name__ = 'interrupt-shape'
 
 p = argparse.ArgumentParser()
-p.add_argument("user")
 p.add_argument("birdID")
+p.add_argument("user")
 p.add_argument("-B", "--block", help="skip to specific block", action='store', default=0)
 p.add_argument("--color", help="set color of cues",
                choices=['blue', 'red', 'green'], default='blue')
@@ -27,6 +27,7 @@ p.add_argument("--feed_duration", help="default feeding duration for correct res
                action='store', default=4000)
 p.add_argument("--response_duration", help="response window duration (in ms) in block 1",
                action='store', default=6000)
+p.add_argument('--log_level', default='INFO')
 args = p.parse_args()
 
 state = {
@@ -39,29 +40,32 @@ params = {
     'user': args.user,
     'active': True,
     'response_duration': args.response_duration,
-    'color': args.color,
-    'block_length': args.trials,
+    'cue_color': args.color,
+    'block_length': int(args.trials),
     'init_position': args.init_position,
-    'response_position': args.response_position or [args.init_position],
-    'feed_delay': args.feed_delay,
-    'feed_duration': args.feed_duration,
+    'feed_delay': int(args.feed_delay)/1000,
+    'feed_duration': int(args.feed_duration),
     'iti_min': 240  # with some variance
 }
-lincoln(log=f"{args.birdID}_{__name__}.log")
-decider = Morgoth()
+lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
+logger = logging.getLogger('main')
 
 
 async def main():
     # Start logging
+    global decider
+    decider = Morgoth()
     await contact_host()
+    asyncio.create_task(decider.messenger.eye())
 
-    asyncio.create_task(decider.light_cycle())
+    await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
+    asyncio.create_task(decider.light_cycle())
 
-    logging.info("Shape.py initiated")
-    await slack(f"Shape.py initiated on {IDENTITY}", usr=args.user)
+    logger.info("interrupt-shape.py initiated")
+    await slack(f"interrupt-shape.py initiated on {IDENTITY}", usr=args.user)
 
-    state['block'] = args.block
+    state['block'] = int(args.block)
 
     while True:
         if not decider.sun.daytime:
@@ -80,7 +84,6 @@ async def main():
 
 
 async def block0_feeder():
-    logger.info("Staring block 0")
     iti_var = 60
     iti = int(params['iti_min'] + random.random() * iti_var)
 
@@ -103,6 +106,7 @@ async def block0_feeder():
 
 
 async def block1_patience():
+    await decider.cues_off()
     iti_var = 60
     await_input = peck_parse(params['init_position'], 'r')
     cue_pos = peck_parse(params['init_position'], 'l')
@@ -157,6 +161,7 @@ async def block1_patience():
 
 
 async def block2_peck():
+    await decider.cues_off()
     iti_var = 15
     iti = int(random.random() * iti_var)
 
@@ -210,6 +215,7 @@ async def block3_auton():
 
     if state['trial'] == 0:
         logger.info(f"Entering block {state['block']}")
+        await decider.cues_off()
 
     def resp_check(key_state):
         for k, v in key_state.items():
@@ -217,9 +223,9 @@ async def block3_auton():
                 return True
         return False
 
-    responded, msg, rtime = await catch('peck-keys',
-                                        caught=resp_check,
-                                        timeout=None)
+    responded, msg, rtime = await decider.scry('peck-keys',
+                                               condition=resp_check,
+                                               timeout=None)
 
     # feed regardless of response
     if responded:  # should always be True in this block

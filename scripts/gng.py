@@ -14,8 +14,8 @@ from lib.dispatch import *
 __name__ = 'gng'
 
 p = argparse.ArgumentParser()
-p.add_argument("user")
 p.add_argument("birdID")
+p.add_argument("user")
 p.add_argument("config")
 p.add_argument("--response_duration", help="response window duration (in ms)",
                action='store', default=4000)
@@ -35,7 +35,7 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
                action='store', default=0)
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
-p.add_argument('--log_level', default='DEBUG')
+p.add_argument('--log_level', default='INFO')
 args = p.parse_args()
 
 state = {
@@ -53,20 +53,21 @@ state = {
 params = {
     'user': args.user,
     'active': True,
-    'response_duration': args.response_duration/1000,
-    'feed_duration': args.feed_duration,
-    'punish_duration': args.lightsout_duration,
-    'max_corrections': args.max_corrections,
+    'response_duration': int(args.response_duration)/1000,
+    'feed_duration': int(args.feed_duration),
+    'punish_duration': int(args.lightsout_duration),
+    'max_corrections': int(args.max_corrections),
     'replace': args.replace,
     'correction_timeout': args.correction_timeout,
     'cue_frequency': args.cue_frequency,
     'cue_color': args.cue_color,
-    'feed_delay': args.feed_delay,
+    'feed_delay': int(args.feed_delay),
     'min_iti': 100,
     'init_key': args.init_position,
 }
-lincoln(log=f"{args.birdID}_{__name__}.log")
-decider = Morgoth()
+
+lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
+logger = logging.getLogger('main')
 
 
 async def await_init():
@@ -172,16 +173,20 @@ def correction_check(correction):
 
 async def main():
     # Start logging
+    global decider
+    decider = Morgoth()
     await contact_host()
+    asyncio.create_task(decider.messenger.eye())
 
-    asyncio.create_task(decider.light_cycle())
+    await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
+    asyncio.create_task(decider.light_cycle())
 
     correction = 0
     stim_data = decider.playback.next()
 
-    logging.info("GNG.py initiated")
+    logger.info("GNG.py initiated")
     await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
 
     while True:
