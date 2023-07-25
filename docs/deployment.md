@@ -32,3 +32,5 @@ LOCAL_LOG: true // log to file
 CONTACT_HOST: true // connect to decide API
 HIVEMIND: // host address
 ```
+
+https://superuser.com/questions/610819/how-to-resize-img-file-created-with-dd

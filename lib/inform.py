@@ -22,7 +22,6 @@ CONTACT_HOST = config['CONTACT_HOST']
 HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
 HOST_LOG = None
-
 logger = logging.getLogger('main')
 
 
@@ -33,7 +32,7 @@ def lincoln(log, level='DEBUG'):
     streamer.setFormatter(formatter)
     logger.addHandler(streamer)
     if LOCAL_LOG:
-        filer = logging.FileHandler(log, mode='w')
+        filer = logging.FileHandler(f"/root/py_crust/log/{log}", mode='w')
         filer.setFormatter(formatter)
         logger.addHandler(filer)
 
@@ -48,21 +47,21 @@ def lincoln(log, level='DEBUG'):
 
 
 async def contact_host():
+    global session
     if CONTACT_HOST:
-        async with aiohttp.ClientSession as session:
-            try:
-                async with session.get(urls=f"{HIVEMIND}/info/",
-                                       ) as result:
-                    logger.dispatch("Response received from Decide-Host")
-                    reply = await result.json()
-                    if result.status != 200:
-                        logger.error('GET Result Error from getting Decide-Host info:', reply)
-                    elif ('api_version' not in reply) or (reply.api_version is None):
-                        logger.error('Unexpected reply from Decide-Host info:', reply)
-                    else:
-                        logger.dispatch("Connected to Decide-Host.")
-            except aiohttp.ClientConnectionError as e:
-                logger.error('Could not contact Decide-Host:', str(e))
+        session = aiohttp.ClientSession()
+        try:
+            async with session.get(url=f"{HIVEMIND}/info/") as result:
+                logger.dispatch("Response received from Decide-Host")
+                reply = await result.json()
+                if result.status != 200:
+                    logger.error('GET Result Error from getting Decide-Host info:', reply)
+                elif ('api_version' not in reply) or (reply['api_version'] is None):
+                    logger.error('Unexpected reply from Decide-Host info:', reply)
+                else:
+                    logger.dispatch("Connected to Decide-Host.")
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Could not contact Decide-Host:', str(e))
     else:
         logger.warning('Standalone Mode specified in config. Trials will not be logged')
 
@@ -74,6 +73,7 @@ async def post_host(msg: dict, target):
     :param target: 'trials' or 'events'
     :return:
     """
+    global session
     if target not in ['trials', 'events']:
         logger.error(f"Specified type for decide API logging incorrect: {target}")
         raise
@@ -82,55 +82,53 @@ async def post_host(msg: dict, target):
             'addr': IDENTITY,
             'time': time.time()
         })
-        async with aiohttp.ClientSession as session:
-            try:
-                async with session.post(url=f"{HIVEMIND}/{target}/",
-                                        json=msg,
-                                        headers={'Content-Type': 'application/json'}
-                                        ) as result:
-                    if result.status != 200:
-                        reply = await result.json()
-                        logger.error('POST Result Error from contacting Decide-Host:', reply)
-                        with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
-                            json.dump(msg, file)
-                            f.write(os.linesep)
-                    else:
-                        logger.dispatch("Data logged to DecideAPI.")
-                        await post_dropped()
-            except aiohttp.ClientConnectionError as e:
-                logger.error('Could not contact Decide-Host:', str(e))
-                with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
-                    json.dump(msg, file)
-                    file.write(os.linesep)
+        try:
+            async with session.post(url=f"{HIVEMIND}/{target}/",
+                                    json=msg,
+                                    headers={'Content-Type': 'application/json'}
+                                    ) as result:
+                if result.status != 201:
+                    reply = await result.json()
+                    logger.error('POST Result Error from contacting Decide-Host:', reply.status)
+                    with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
+                        json.dump(msg, file)
+                        f.write(os.linesep)
+                else:
+                    logger.dispatch("Data logged to DecideAPI.")
+                    await post_dropped()
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Could not contact Decide-Host:', str(e))
+            with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
+                json.dump(msg, file)
+                file.write(os.linesep)
 
 
 async def post_dropped():
-    for thing in ['events','trials']:
-        with open(f'/root/py_crust/dropped_{thing}.json', 'rb') as file:
+    try:
+        with open(f'/root/py_crust/dropped_trials.json', 'rb') as file:
             if file.read(2) != '[]':
                 things = json.load(file)
                 for data in things:
-                    await post_host(data, thing)
-                os.remove(f'dropped_{thing}.log')
+                    await post_host(data, 'trials')
+                os.remove(f'dropped_trials.log')
+    except FileNotFoundError:
+        return
 
 
 async def slack(msg, usr=None):
+    global session
+    if isinstance(usr, str):
+        message = f"Hey <{usr}>, {msg}"
+    else:
+        message = f"{msg}. Praise Dan |('')|"
+    slack_message = {'text': message}
     try:
-        if isinstance(usr, list):
-            users = "<" + "> <".join(usr) + ">"
-            message = f"Hey {users}, {msg}"
-        elif isinstance(usr, str):
-            message = f"Hey <{usr}>, {msg}"
-        else:
-            message = f"{msg}. Praise Dan |('')|"
-        slack_message = {'text': message}
-        async with aiohttp.ClientSession as session:
-            async with session.post(url=SLACK_HOOK,
-                                    json=slack_message,
-                                    headers={'Content-Type': 'application/json'}
-                                    ) as result:
-                reply = await result.json()
-        logger.info(f"Slacked user, response: {reply}")
+        async with session.post(url=SLACK_HOOK,
+                                json=slack_message,
+                                headers={'Content-Type': 'application/json'}
+                                ) as result:
+            reply = await result.read()
+        logger.info(f"Slacked {usr}, response: {reply}")
     except Exception as e:
         logger.warning(f"Slack Error: {e}")
     return

@@ -53,12 +53,17 @@ class Morgoth:
 
         start = time.time()
         if timeout is not None:
+            timeout = timeout / 1000 if timeout > 20 else timeout
             try:
-                await asyncio.wait_for(test(condition), timeout/1000)
+                await asyncio.wait_for(test(condition), timeout)
             except asyncio.exceptions.TimeoutError:
                 message = None
-                timer = timeout/1000
+                timer = timeout
                 if failure is not None:
+                    end = time.time()
+                    timer = end - start
+                    logger.error(f"Required response not received within timeout {timeout},"
+                                 f" time elapsed is {timer}")
                     failure(component)
         else:
             await test(condition)
@@ -115,16 +120,16 @@ class Morgoth:
     async def feed(self, delay=0):
         logger.state('Feed requested')
         await asyncio.sleep(delay)
+        b = asyncio.create_task(self.messenger.command(
+            request_type="ChangeState",
+            component='stepper-motor',
+            body={'running': True, 'direction': True}
+        ))
         a = asyncio.create_task(self.scry(
             'stepper-motor',
             condition=lambda pub: ('running' in pub) and (pub['running']),
             failure=pub_err,
             timeout=TIMEOUT
-        ))
-        b = asyncio.create_task(self.messenger.command(
-            request_type="ChangeState",
-            component='stepper-motor',
-            body={'running': True, 'direction': True}
         ))
         await asyncio.gather(a, b)
         logger.state('feeding confirmed by decide-rs, awaiting motor stop')
@@ -155,7 +160,7 @@ class Morgoth:
         return
 
     async def cues_off(self):
-        for pos in ['peck-leds-left','peck-leds-right','peck-leds-center']:
+        for pos in ['peck-leds-left', 'peck-leds-right', 'peck-leds-center']:
             await self.cue(pos, 'off')
 
     async def light_cycle(self):
