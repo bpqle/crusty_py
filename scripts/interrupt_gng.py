@@ -133,8 +133,8 @@ async def main():
     asyncio.create_task(decider.light_cycle())
     stim_data = decider.playback.next()
 
-    logger.info("interrupt_gng.py initiated")
-    await slack(f"interrupt_gng.py initiated on {IDENTITY}", usr=args.user)
+    logger.info(f"{__name__} initiated")
+    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     response = None
     while True:
@@ -153,6 +153,7 @@ if __name__ == "interrupt-gng":
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         logger.error(f"Error encountered {e}")
-        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
+        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
         print(e)
         sys.exit("Error Detected, shutting down.")
+

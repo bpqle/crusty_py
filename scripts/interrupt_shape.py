@@ -62,8 +62,8 @@ async def main():
     await decider.set_feeder(duration=params['feed_duration'])
     asyncio.create_task(decider.light_cycle())
 
-    logger.info("interrupt-shape.py initiated")
-    await slack(f"interrupt-shape.py initiated on {IDENTITY}", usr=args.user)
+    logger.info(f"{__name__} initiated")
+    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     state['block'] = int(args.block)
 
@@ -257,6 +257,6 @@ if __name__ == 'interrupt-shape':
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         logger.error(f"Error encountered {e}")
-        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
+        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
         print(e)
         sys.exit("Error Detected, shutting down.")

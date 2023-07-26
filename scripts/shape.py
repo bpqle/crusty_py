@@ -70,8 +70,8 @@ async def main():
     else:
         state['block'] = int(args.block)
 
-    logger.info("Shape.py initiated")
-    await slack(f"Shape.py initiated on {IDENTITY}", usr=args.user)
+    logger.info(f"{__name__} initiated")
+    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     while True:
         if not decider.sun.daytime:
@@ -332,6 +332,6 @@ if __name__ == 'shape':
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         logger.error(f"Error encountered {e}")
-        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
+        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
         print(e)
         sys.exit("Error Detected, shutting down.")
