@@ -103,7 +103,7 @@ async def block0_feeder():
     state.update({
         'trial': state.get('trial', 0) + 1,
     })
-    logger.info(f"Trial {state['trial']} completed. Logging trial.")
+    logger.info(f"Trial {state['trial']} completed. iti will be {iti}")
     await post_host(msg=state.copy(), target='trials')
 
     await asyncio.sleep(iti)
@@ -157,7 +157,7 @@ async def block1_patience():
             'rtime': None,
         })
 
-    logger.info(f"Trial {state['trial']} completed.")
+    logger.info(f"Trial {state['trial']} completed. iti will be {iti}")
     await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
@@ -200,7 +200,7 @@ async def block2_peck():
             'response': await_input,
             'rtime': rtime,
         })
-        logger.info(f"Trial {state['trial']} completed.")
+        logger.info(f"Trial {state['trial']} completed. iti will be {iti}")
         await post_host(msg=state.copy(), target='trials')
         await asyncio.sleep(iti)
 
@@ -257,7 +257,7 @@ async def block3_extend():
         'response': second_input,
         'rtime': rtime,
     })
-    logger.info(f"Trial {state['trial']} completed.")
+    logger.info(f"Trial {state['trial']} completed. iti will be {iti}")
     await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
@@ -310,7 +310,7 @@ async def block4_auton():
         'response': second_input,
         'rtime': rtime,
     })
-    logger.info(f"Trial {state['trial']} completed.")
+    logger.info(f"Trial {state['trial']} completed. iti will be {iti}")
     await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
@@ -328,5 +328,10 @@ if __name__ == 'shape':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.warning("SIGINT Detected, shutting down.")
-        asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))
+        logger.warning("Keyboard Interrupt Detected, shutting down.")
+        sys.exit("Keyboard Interrupt Detected, shutting down.")
+    except Exception as e:
+        logger.error(f"Error encountered {e}")
+        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
+        print(e)
+        sys.exit("Error Detected, shutting down.")

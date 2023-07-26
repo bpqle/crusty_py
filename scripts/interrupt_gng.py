@@ -149,5 +149,10 @@ if __name__ == "interrupt-gng":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.warning("SIGINT Detected, shutting down.")
-        asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))
+        logger.warning("Keyboard Interrupt Detected, shutting down.")
+        sys.exit("Keyboard Interrupt Detected, shutting down.")
+    except Exception as e:
+        logger.error(f"Error encountered {e}")
+        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
+        print(e)
+        sys.exit("Error Detected, shutting down.")
