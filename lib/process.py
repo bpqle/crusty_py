@@ -26,7 +26,6 @@ class Morgoth:
 
     async def scry(self, component, condition, failure=None, timeout=None):
         logger.state(f"Scry process started for {component}, purging queue")
-        await self.messenger.purge()
         interrupted = False
         message = None
         timer = None
@@ -140,6 +139,7 @@ class Morgoth:
             timeout=8000
         )
         logger.state('motor stop confirmed by decide-rs')
+        await self.messenger.purge()
         return
 
     async def cue(self, loc, color):
@@ -157,6 +157,7 @@ class Morgoth:
             body={'led_state': color}
         ))
         await asyncio.gather(a, b)
+        await self.messenger.purge()
         return
 
     async def cues_off(self):
@@ -200,6 +201,7 @@ class Morgoth:
             body={'manual': False, 'dyson': True}
         ))
         await asyncio.gather(a, b)
+        await self.messenger.purge()
         logger.state("Returning house lights to cycle succeeded")
 
     async def play(self, stim=None):
@@ -230,7 +232,7 @@ class Morgoth:
             'audio-playback',
             condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
             failure=pub_err,
-            timeout=stim_duration + TIMEOUT
+            timeout=stim_duration*1000 + TIMEOUT
         ))
         return stim_duration, handle
 
@@ -248,6 +250,7 @@ class Morgoth:
         ))
         await b
         await a
+        await self.messenger.purge()
         return
 
 
