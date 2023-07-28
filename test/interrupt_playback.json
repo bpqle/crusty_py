@@ -1,0 +1,39 @@
+{
+  "parameters": {
+    "init_position": "peck_center",
+    "rand_replace": true
+  },
+  "stimulus_root": "/root/test/stim/",
+  "stimuli": [
+    {
+      "name": "pmkimwop_30",
+      "frequency": 1,
+      "responses": {
+        "peck_center": {
+          "p_reward": 0.0,
+          "reinforced": false
+        },
+        "timeout": {
+          "p_reward": 1.0,
+          "reinforced": true
+        }
+      },
+      "category": "no_cue_lights"
+    },
+    {
+      "name": "dhhon79k_30",
+      "frequency": 4,
+      "responses": {
+        "peck_center": {
+          "p_reward": 0.0,
+          "reinforced": false
+        },
+        "timeout": {
+          "p_reward": 0.0,
+          "reinforced": false
+        }
+      },
+      "category": "no_cue_lights"
+    }
+  ]
+}

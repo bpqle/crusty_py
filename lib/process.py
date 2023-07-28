@@ -5,8 +5,6 @@ import zmq.asyncio
 from .errata import pub_err
 from .dispatch import Sauron
 from .inform import *
-from .decrypt import Component
-from google.protobuf.json_format import MessageToDict
 import asyncio
 import logging
 
@@ -31,7 +29,7 @@ class Morgoth:
         timer = None
 
         async def test(func):
-            nonlocal interrupted, message, start, timer
+            nonlocal interrupted, message, start, timer, end
             while True:
                 logger.state(f"Scry {component} - test found message in queue")
                 comp, state = await self.messenger.queue.get()
@@ -40,14 +38,15 @@ class Morgoth:
                     timer = end - start
                     message = state
                     interrupted = True
-                    logger.state(f"Scry {component} - check succeeded. Ending.")
+                    logger.debug(f"Scry {component} - check succeeded. Ending.")
                     # self.messenger.queue.task_done()
                     return
                 else:
-                    logger.state(f"Scry {component} - check failed. Continuing.")
+                    logger.debug(f"Scry {component} - check failed. Continuing.")
                     # self.messenger.queue.task_done()
                     if comp != component:
                         await self.messenger.queue.put([comp, state])
+                    await asyncio.sleep(0.001)
                     continue
 
         start = time.time()
@@ -208,6 +207,11 @@ class Morgoth:
         if stim is None:
             stim = self.playback.stimulus
         logger.state(f"Playback of {stim} requested")
+        b = asyncio.create_task(self.messenger.command(
+            request_type="ChangeState",
+            component='audio-playback',
+            body={'audio_id': stim, 'playback': 1}
+        ))
         a = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: ('audio_id' in msg)
@@ -217,26 +221,23 @@ class Morgoth:
             failure=pub_err,
             timeout=TIMEOUT
         ))
-        b = asyncio.create_task(self.messenger.command(
-            request_type="ChangeState",
-            component='audio-playback',
-            body={'audio_id': stim, 'playback': 1}
-        ))
-        _, pub, _ = await a
         await b
+        _, pub, _ = await a
 
         frame_count = pub['frame_count']
         stim_duration = frame_count / self.playback.sample_rate
+        self.playback.duration = stim_duration
 
         handle = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
             failure=pub_err,
-            timeout=stim_duration*1000 + TIMEOUT
+            timeout=stim_duration * 1000 + TIMEOUT
         ))
-        return stim_duration, handle
+        await handle
 
     async def stop(self):
+        logger.state("Requesting playback stop.")
         a = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
@@ -279,6 +280,7 @@ class JukeBox:
         self.playlist = None
         self.dir = None
         self.cue_locations = None
+        self.duration = None
 
     @classmethod
     async def spawn(cls, cfg, shuffle=True, replace=False, get_cues=True):
@@ -290,7 +292,7 @@ class JukeBox:
             self.stim_data = cf['stimuli']
 
         self.cue_locations = {}
-        playlist = []
+        playlist = np.empty(shape=0)
 
         logger.state("Validating and generating playlist")
         for i, stim in enumerate(self.stim_data):
@@ -305,9 +307,12 @@ class JukeBox:
                     cue_loc = peck_parse(action, 'l')
             if get_cues:
                 self.cue_locations[stim['name']] = cue_loc
-            playlist.append(np.repeat(i, stim['frequency']))
+            added = np.repeat(i, stim['frequency'])
+            playlist = np.append(playlist, added)
 
-        self.playlist = np.array(playlist).flatten()
+        assert (playlist.ndim == 1)
+        logger.info(f"Playlist {playlist}")
+        self.playlist = playlist
         if shuffle:
             np.random.shuffle(self.playlist)
         self.ptr = iter(self.playlist)
@@ -317,12 +322,12 @@ class JukeBox:
     def next(self):
         if not self.replace:
             try:
-                item = next(self.ptr)
+                item = int(next(self.ptr))
             except StopIteration:
                 if self.shuffle:
                     np.random.shuffle(self.playlist)
                 self.ptr = iter(self.playlist)
-                item = next(self.ptr)
+                item = int(next(self.ptr))
         else:
             if self.shuffle:
                 np.random.shuffle(self.playlist)
@@ -337,3 +342,28 @@ class JukeBox:
             logger.error("Trying to determine cue but no stimulus specified. Try initiating playlist first")
             raise
         return self.cue_locations[self.stimulus]
+
+
+# This function maintains sanity
+def peck_parse(phrase, mode):
+    """
+    Takes in a string containing location (left, right, center)
+     and outputs a string that matches the method to be used
+    :param phrase: string variable to be parsed
+    :param mode: 'l' for led, 'r' for key/response
+    :return:
+    """
+    if mode in ['led', 'l', 'leds']:
+        if 'left' in phrase:
+            return 'peck-leds-left'
+        elif 'right' in phrase:
+            return 'peck-leds-right'
+        elif 'center' in phrase:
+            return 'peck-leds-center'
+    elif mode in ['response', 'r']:
+        if 'left' in phrase:
+            return 'peck_left'
+        elif 'right' in phrase:
+            return 'peck_right'
+        elif 'center' in phrase:
+            return 'peck_center'

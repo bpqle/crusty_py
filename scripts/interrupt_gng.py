@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import os
 import sys
-
+import traceback
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
@@ -68,18 +68,19 @@ async def await_init():
 
 
 async def present_stim(stim_data):
-    dur, _ = decider.play(stim_data['name'])
-    return dur
+    asyncio.create_task(decider.play(stim_data['name']))
+    return
 
 
-async def await_respond(stim_data, duration):
+async def await_response(stim_data):
     # await cue(pb.current_cue(), params['cue_color'])
     response = 'timeout'
+    duration = decider.playback.duration
 
     def resp_check(key_state):
         nonlocal response
         for k, v in key_state.items():
-            if v & (k in stim_data):
+            if (k in stim_data['responses']) & bool(v):
                 asyncio.create_task(decider.stop())
                 response = k
                 return True
@@ -138,11 +139,11 @@ async def main():
 
     response = None
     while True:
-        if response and (response == 'timeout'):
+        if (response is None) or (response == 'timeout'):
             await await_init()
         duration = await present_stim(stim_data)
-        response, rtime = await await_respond(stim_data, duration)
-        stim_data, correction = await complete(stim_data, response, rtime)
+        response, rtime = await await_response(stim_data)
+        stim_data = await complete(stim_data, response, rtime)
 
 
 if __name__ == "interrupt-gng":
@@ -151,9 +152,9 @@ if __name__ == "interrupt-gng":
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
         sys.exit("Keyboard Interrupt Detected, shutting down.")
-    except Exception as e:
-        logger.error(f"Error encountered {e}")
-        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
-        print(e)
+    except Exception:
+        logger.error(f"Error encountered {traceback.format_exc()}")
+        asyncio.run(slack(f"{__name__} client encountered an error and has shut down.", usr=args.user))
+        traceback.print_exc()
         sys.exit("Error Detected, shutting down.")
 

@@ -27,22 +27,45 @@ logger = logging.getLogger('main')
 
 def lincoln(log, level='DEBUG'):
 
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    # Courtesy of https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+    class CustomFormatter(logging.Formatter):
+
+        white = "\x1b[37m"  # debug
+        green = "\x1b[32m"  # proto
+        blue = "\x1b[34m"  # dispatch
+        magenta = "\x1b[35m"  # state
+        cyan = "\x1b[36m"  # info
+        yellow = "\x1b[33m"  # warning
+        red = "\x1b[31m"  # error
+        bold_red = "\x1b[31;1m"
+        reset = "\x1b[0m"
+        format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+        FORMATS = {
+            logging.DEBUG: white + format + reset,
+            logging.PROTO: green + format + reset,
+            logging.DISPATCH: blue + format + reset,
+            logging.STATE: magenta + format + reset,
+            logging.INFO: cyan + format + reset,
+            logging.WARNING: yellow + format + reset,
+            logging.ERROR: red + format + reset,
+            logging.CRITICAL: bold_red + format + reset
+        }
+
+        def format(self, record):
+            log_fmt = self.FORMATS.get(record.levelno)
+            formatter = logging.Formatter(log_fmt)
+            return formatter.format(record)
+
     streamer = logging.StreamHandler(sys.stdout)
-    streamer.setFormatter(formatter)
+    streamer.setFormatter(CustomFormatter())
     logger.addHandler(streamer)
     if LOCAL_LOG:
         filer = logging.FileHandler(f"/root/py_crust/log/{log}", mode='w')
-        filer.setFormatter(formatter)
+        filer.setFormatter(logging.Formatter())
         logger.addHandler(filer)
 
     logger.info(f"Logging to file {log}. Connecting to DecideAPI")
-    # Proto is reserved for basic communication protocols of protobuf found in decrypt.py
-    add_log_lvl('PROTO', 11, 'proto')
-    # Dispatch is reserved for zmq operations found in dispatch.py
-    add_log_lvl('DISPATCH', 12, 'dispatch')
-    # State is reserved for state-machine operations found in process.py
-    add_log_lvl('STATE', 13, 'state')
     logger.setLevel(level)
 
 
@@ -154,6 +177,7 @@ def add_log_lvl(name, num, method_name):
     def logForLevel(self, message, *args, **kwargs):
         if self.isEnabledFor(num):
             self._log(num, message, args, **kwargs)
+
     def logToRoot(message, *args, **kwargs):
         logging.log(num, message, *args, **kwargs)
 
@@ -163,26 +187,10 @@ def add_log_lvl(name, num, method_name):
     setattr(logging, method_name, logToRoot)
 
 
-# This function maintains sanity
-def peck_parse(phrase, mode):
-    """
-    Takes in a string containing location (left, right, center)
-     and outputs a string that matches the method to be used
-    :param phrase: string variable to be parsed
-    :param mode: 'l' for led, 'r' for key/response
-    :return:
-    """
-    if mode in ['led', 'l', 'leds']:
-        if 'left' in phrase:
-            return 'peck-leds-left'
-        elif 'right' in phrase:
-            return 'peck-leds-right'
-        elif 'center' in phrase:
-            return 'peck-leds-center'
-    elif mode in ['response', 'r']:
-        if 'left' in phrase:
-            return 'peck_left'
-        elif 'right' in phrase:
-            return 'peck_right'
-        elif 'center' in phrase:
-            return 'peck_center'
+# Proto is reserved for basic communication protocols of protobuf found in decrypt.py
+# Dispatch is reserved for zmq operations found in dispatch.py
+# State is reserved for state-machine operations found in process.py
+add_log_lvl('PROTO', 11, 'proto')
+add_log_lvl('DISPATCH', 12, 'dispatch')
+add_log_lvl('STATE', 13, 'state')
+

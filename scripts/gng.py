@@ -85,9 +85,7 @@ async def await_init():
 
 async def present_stim(stim_data):
     logger.state('Peck init registered, presenting stim')
-    duration, handle = await decider.play(stim_data['name'])
-    logger.state(f"Stim will play for {duration}s")
-    await handle
+    await decider.play(stim_data['name'])
     return
 
 
