@@ -23,6 +23,15 @@ class Morgoth:
         logger.state("Apparatus-class Object created. Praise Dan.")
 
     async def scry(self, component, condition, failure=None, timeout=None):
+        """
+        Search for incoming messages matching component name and test for specific condition
+        Optional failure and timeout.
+        :param component: str, name of decide-core component
+        :param condition: fn, test the dict-type message emmited from core
+        :param failure: fn, optional error/failure state, only in conjunction with timeout
+        :param timeout: time(ms) to await and test messages.
+        :return:
+        """
         logger.state(f"Scry process started for {component}, purging queue")
         interrupted = False
         message = None
@@ -31,8 +40,8 @@ class Morgoth:
         async def test(func):
             nonlocal interrupted, message, start, timer, end
             while True:
-                logger.state(f"Scry {component} - test found message in queue")
                 comp, state = await self.messenger.queue.get()
+                logger.state(f"Scry {component} - test found message in queue of {comp}")
                 if (comp == component) & func(state):
                     end = time.time()
                     timer = end - start
@@ -70,6 +79,11 @@ class Morgoth:
         return interrupted, message, timer
 
     async def set_feeder(self, duration):
+        """
+        Configure food motor
+        :param duration: duration (ms) to automatically run motor
+        :return:
+        """
         logger.state("Setting feed duration")
         await self.messenger.command(request_type="SetParameters",
                                      component='stepper-motor',
@@ -83,6 +97,11 @@ class Morgoth:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
     async def set_light(self, interval=300):
+        """
+        Configure house light duration
+        :param interval: duration (ms) to update house light
+        :return:
+        """
         self.sun = Sun()
         await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
@@ -107,7 +126,7 @@ class Morgoth:
             request_type="GetParameters",
             component='audio-playback',
             body=None,
-            timeout=100000
+            timeout=None
         )
         # if dir_check['audio_dir'] != self.playback.dir:
         #     logger.error(f"Auditory folder mismatch: got {dir_check['audio_dir']} expected {self.playback.dir}")
@@ -116,6 +135,11 @@ class Morgoth:
         logger.state(f"Got sampling rate {dir_check['sample_rate']}")
 
     async def feed(self, delay=0):
+        """
+        Automcatically run food motor and await end
+        :param delay: duration (ms) to wait before running motor
+        :return:
+        """
         logger.state('Feed requested')
         await asyncio.sleep(delay)
         b = asyncio.create_task(self.messenger.command(
@@ -142,6 +166,12 @@ class Morgoth:
         return
 
     async def cue(self, loc, color):
+        """
+        Activate led at specific location
+        :param loc: str, location. Input string will be checked by "peck_parse()"
+        :param color: ['red','blue','green','all','off']
+        :return:
+        """
         pos = peck_parse(loc, mode='l')
         logger.state(f'Requesting cue {pos}')
         a = asyncio.create_task(self.scry(
@@ -164,12 +194,23 @@ class Morgoth:
             await self.cue(pos, 'off')
 
     async def light_cycle(self):
+        """
+        This function will await messages regarding light cycle update
+        Should be run within a create_task() and not awaited
+        :return:
+        """
         while True:
             decoded = await self.messenger.light_q.get()
             self.sun.update(decoded)
             logger.state("House-light state updated")
 
     async def blip(self, duration, brightness=0):
+        """
+        Turn off house lights for duration. Alternatively, set houselight to specific level.
+        :param duration:
+        :param brightness: optional, defaults to 0
+        :return:
+        """
         logger.state("Manually changing house lights")
         a = asyncio.create_task(self.scry(
             'house-light',
@@ -203,21 +244,28 @@ class Morgoth:
         await self.messenger.purge()
         logger.state("Returning house lights to cycle succeeded")
 
-    async def play(self, stim=None):
+    async def play(self, stim=None, poll_end=True):
+        """
+        play specified stimuli, or last played stimuli if not specified.
+        Automatically awaits the stimuli end message, but can be ignored for interruption.
+        :param stim: name of stimuli, to be used in conjunction with playback's iterator.
+        :param poll_end: True to return after stimuli end, False to return as soon as stimuli starts
+        :return:
+        """
         if stim is None:
             stim = self.playback.stimulus
         logger.state(f"Playback of {stim} requested")
         b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component='audio-playback',
-            body={'audio_id': stim, 'playback': 1}
+            body={'audio_id': stim, 'playback': True}
         ))
         a = asyncio.create_task(self.scry(
             'audio-playback',
             condition=lambda msg: ('audio_id' in msg)
                                   and ('playback' in msg)
                                   and (msg['audio_id'] == stim)
-                                  and (msg['playback'] == 1),
+                                  and (msg['playback']),
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -227,20 +275,24 @@ class Morgoth:
         frame_count = pub['frame_count']
         stim_duration = frame_count / self.playback.sample_rate
         self.playback.duration = stim_duration
-
-        handle = asyncio.create_task(self.scry(
-            'audio-playback',
-            condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
-            failure=pub_err,
-            timeout=stim_duration * 1000 + TIMEOUT
-        ))
-        await handle
+        if poll_end:
+            handle = asyncio.create_task(self.scry(
+                'audio-playback',
+                condition=lambda msg: ('playback' in msg) and (msg['playback'] is False),
+                failure=pub_err,
+                timeout=stim_duration * 1000 + TIMEOUT
+            ))
+            await handle
 
     async def stop(self):
+        """
+        Request stimuli stop
+        :return:
+        """
         logger.state("Requesting playback stop.")
         a = asyncio.create_task(self.scry(
             'audio-playback',
-            condition=lambda msg: ('playback' in msg) and (msg['playback'] == 0),
+            condition=lambda msg: ('playback' in msg) and (msg['playback'] is False),
             failure=pub_err,
             timeout=TIMEOUT
         ))

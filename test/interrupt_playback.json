@@ -6,7 +6,7 @@
   "stimulus_root": "/root/test/stim/",
   "stimuli": [
     {
-      "name": "pmkimwop_30",
+      "name": "pmkimwop_30_intr",
       "frequency": 1,
       "responses": {
         "peck_center": {
@@ -21,7 +21,7 @@
       "category": "no_cue_lights"
     },
     {
-      "name": "dhhon79k_30",
+      "name": "p1mrfhop_30_intr",
       "frequency": 4,
       "responses": {
         "peck_center": {

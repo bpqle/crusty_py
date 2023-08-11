@@ -18,7 +18,7 @@ This will generate google's vanilla `.py` files with `_pb2` in the name, as well
 
 ### Deploying repo to connected beaglebone:
 ```
-rsync -av -e ssh --exclude='.*' ./py_crust/ beagle-X:/root/py_crust/
+rsync -av -e ssh --exclude='.*' . beagle-X:/root/py_crust/
 ```
 ### Configuration
 Place a `config.yml` file in `/root/.config/py_crust/` on the beaglebone with the following fields:

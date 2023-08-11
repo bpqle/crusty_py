@@ -66,7 +66,6 @@ class Sauron:
         while True:
             *topic, msg = await self.subber.recv_multipart()
             state, comp = topic[0].decode("utf-8").split("/")
-            logger.dispatch(f"Eye spy emitted pub message from {comp}")
             proto_comp = Component(state, comp)
             tstamp, state_msg = await proto_comp.from_pub(msg)
             decoded = MessageToDict(state_msg,
@@ -77,6 +76,7 @@ class Sauron:
                 'name': comp,
                 'state': decoded.copy()
             }
+            logger.dispatch(f"Eye spy emitted pub message from {comp}: {decoded}")
             await post_host(msg, target='events')
             # add to queue
             await self.queue.put([comp, decoded])

@@ -68,7 +68,7 @@ async def await_init():
 
 
 async def present_stim(stim_data):
-    asyncio.create_task(decider.play(stim_data['name']))
+    await decider.play(stim_data['name'], poll_end=False)
     return
 
 
@@ -122,16 +122,18 @@ async def complete(stim_data, response, rtime):
 
 
 async def main():
-    # Start logging
+    # Initiate apparatus
     global decider
     decider = Morgoth()
+    # Start logging for messages
     await contact_host()
     asyncio.create_task(decider.messenger.eye())
-
+    # Initialize components
     await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
     asyncio.create_task(decider.light_cycle())
+    # Get first stimulus
     stim_data = decider.playback.next()
 
     logger.info(f"{__name__} initiated")
