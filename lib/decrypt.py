@@ -4,7 +4,7 @@ from .generator_hex import decide_pb2 as dc_pb,\
 import google.protobuf.any_pb2 as _any
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('main')
 
 
 class Component:
@@ -13,7 +13,7 @@ class Component:
         self.meta_type = meta_type
         if component == "house-light":
             self.component = self.HouseLight(meta_type, data)
-        elif component in ["peck-leds-left", b"peck-leds-right", b"peck-leds-center"]:
+        elif component in ["peck-leds-left", "peck-leds-right", "peck-leds-center"]:
             self.component = self.PeckLed(meta_type, data)
         elif component == "stepper-motor":
             self.component = self.StepperMotor(meta_type, data)
@@ -23,7 +23,7 @@ class Component:
             self.component = self.SoundAlsa(meta_type, data)
         else:
             logger.error(f"Unrecognized/Unspecified Component Name {component}")
-        logging.proto(f"{component} - {meta_type} - protobuf parser created")
+        logger.proto(f"{component} - {meta_type} - protobuf parser created")
         
     async def from_any(self, any_msg: _any.Any):
         if any_msg.type_url == self.component.type_url:

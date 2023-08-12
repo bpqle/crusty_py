@@ -10,9 +10,9 @@ class SaState(_message.Message):
     PLAYBACK_FIELD_NUMBER: _ClassVar[int]
     FRAME_COUNT_FIELD_NUMBER: _ClassVar[int]
     audio_id: str
-    playback: int
+    playback: bool
     frame_count: int
-    def __init__(self, audio_id: _Optional[str] = ..., playback: _Optional[int] = ..., frame_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, audio_id: _Optional[str] = ..., playback: bool = ..., frame_count: _Optional[int] = ...) -> None: ...
 
 class SaParams(_message.Message):
     __slots__ = ["audio_dir", "audio_count", "sample_rate"]

@@ -4,7 +4,7 @@ import aiohttp
 import sys
 import time
 import os
-
+import json
 
 with open("/root/.config/py_crust/config.yml", "r") as f:
     try:
@@ -21,94 +21,145 @@ LOCAL_LOG = config['LOCAL_LOG']
 CONTACT_HOST = config['CONTACT_HOST']
 HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
+HOST_LOG = None
+logger = logging.getLogger('main')
 
 
-def lincoln(log, level=logging.DEBUG):
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+def lincoln(log, level='DEBUG'):
+
+    # Courtesy of https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+    class CustomFormatter(logging.Formatter):
+
+        white = "\x1b[37m"  # debug
+        green = "\x1b[32m"  # proto
+        blue = "\x1b[34m"  # dispatch
+        magenta = "\x1b[35m"  # state
+        cyan = "\x1b[36m"  # info
+        yellow = "\x1b[33m"  # warning
+        red = "\x1b[31m"  # error
+        bold_red = "\x1b[31;1m"
+        reset = "\x1b[0m"
+        format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+        FORMATS = {
+            logging.DEBUG: white + format + reset,
+            logging.PROTO: green + format + reset,
+            logging.DISPATCH: blue + format + reset,
+            logging.STATE: magenta + format + reset,
+            logging.INFO: cyan + format + reset,
+            logging.WARNING: yellow + format + reset,
+            logging.ERROR: red + format + reset,
+            logging.CRITICAL: bold_red + format + reset
+        }
+
+        def format(self, record):
+            log_fmt = self.FORMATS.get(record.levelno)
+            formatter = logging.Formatter(log_fmt)
+            return formatter.format(record)
+
     streamer = logging.StreamHandler(sys.stdout)
-    streamer.setFormatter(formatter)
-    filer = logging.FileHandler(log, mode='w')
+    streamer.setFormatter(CustomFormatter())
+    logger.addHandler(streamer)
+    if LOCAL_LOG:
+        filer = logging.FileHandler(f"/root/py_crust/log/{log}", mode='w')
+        filer.setFormatter(logging.Formatter())
+        logger.addHandler(filer)
 
-    handlers = [filer, streamer] if LOCAL_LOG else [streamer]
-    filer.setFormatter(formatter)
-    logging.basicConfig(
-        level=level,
-        handlers=handlers
-    )
-    logging.debug(f"Logging to file {log}. Connecting to DecideAPI")
-    # Proto is reserved for basic communication protocols of protobuf found in decrypt.py
-    add_log_lvl('PROTO', 11, 'proto')
-    # Dispatch is reserved for zmq operations found in dispatch.py
-    add_log_lvl('DISPATCH', 12, 'dispatch')
-    # State is reserved for state-machine operations found in process.py
-    add_log_lvl('STATE', 13, 'state')
+    logger.info(f"Logging to file {log}. Connecting to DecideAPI")
+    logger.setLevel(level)
 
 
 async def contact_host():
+    global session
     if CONTACT_HOST:
-        async with aiohttp.ClientSession as session:
-            try:
-                async with session.get(urls=f"{HIVEMIND}/info/",
-                                       ) as result:
-                    logging.dispatch("Response received from Decide-Host")
-                    reply = await result.json()
-                    if result.status != 200:
-                        logging.error('GET Result Error from getting Decide-Host info:', reply)
-                    elif ('api_version' not in reply) or (reply.api_version is None):
-                        logging.error('Unexpected reply from Decide-Host info:', reply)
-                    else:
-                        logging.dispatch("Connected to Decide-Host.")
-            except aiohttp.ClientConnectionError as e:
-                logging.error('Could not contact Decide-Host:', str(e))
+        session = aiohttp.ClientSession()
+        try:
+            async with session.get(url=f"{HIVEMIND}/info/") as result:
+                logger.dispatch("Response received from Decide-Host")
+                reply = await result.json()
+                if result.status != 200:
+                    logger.error('GET Result Error from getting Decide-Host info:', reply)
+                elif ('api_version' not in reply) or (reply['api_version'] is None):
+                    logger.error('Unexpected reply from Decide-Host info:', reply)
+                else:
+                    logger.dispatch("Connected to Decide-Host.")
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Could not contact Decide-Host:', str(e))
     else:
-        logging.warning('Standalone Mode specified in config. Trials will not be logged')
+        logger.warning('Standalone Mode specified in config. Trials will not be logged')
 
 
-async def log_trial(msg: dict):
+async def post_host(msg: dict, target):
+    """
+    Send a POST request to the decide API specified in py_crust's config
+    :param msg: dictionary of data. address and time will be automatically filled out
+    :param target: 'trials' or 'events'
+    :return:
+    """
+    global session
+    if target not in ['trials', 'events']:
+        logger.error(f"Specified type for decide API logging incorrect: {target}")
+        raise
     if CONTACT_HOST:
-        msg['addr'] = IDENTITY
-        msg['time'] = time.time()
-        async with aiohttp.ClientSession as session:
-            try:
-                async with session.post(url=f"{HIVEMIND}/trials/",
-                                        json=msg,
-                                        headers={'Content-Type': 'application/json'}
-                                        ) as result:
-                    if result.status != 200:
-                        reply = await result.json()
-                        logging.error('POST Result Error from contacting Decide-Host:', reply)
-                    else:
-                        logging.dispatch("Trial logged to DecideAPI.")
-            except aiohttp.ClientConnectionError as e:
-                logging.error('Could not contact Decide-Host:', str(e))
-    return
+        msg.update({
+            'addr': IDENTITY,
+            'time': time.time()
+        })
+        try:
+            async with session.post(url=f"{HIVEMIND}/{target}/",
+                                    json=msg,
+                                    headers={'Content-Type': 'application/json'}
+                                    ) as result:
+                if result.status != 201:
+                    reply = await result.json()
+                    logger.error('POST Result Error from contacting Decide-Host:', reply.status)
+                    with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
+                        json.dump(msg, file)
+                        f.write(os.linesep)
+                else:
+                    logger.dispatch("Data logged to DecideAPI.")
+                    await post_dropped()
+        except aiohttp.ClientConnectionError as e:
+            logger.error('Could not contact Decide-Host:', str(e))
+            with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
+                json.dump(msg, file)
+                file.write(os.linesep)
+
+
+async def post_dropped():
+    try:
+        with open(f'/root/py_crust/dropped_trials.json', 'rb') as file:
+            if file.read(2) != '[]':
+                things = json.load(file)
+                for data in things:
+                    await post_host(data, 'trials')
+                os.remove(f'dropped_trials.log')
+    except FileNotFoundError:
+        return
 
 
 async def slack(msg, usr=None):
+    global session
+    if isinstance(usr, str):
+        message = f"Hey <{usr}>, {msg}"
+    else:
+        message = f"{msg}. Praise Dan |('')|"
+    slack_message = {'text': message}
     try:
-        if isinstance(usr, list):
-            users = "<" + "> <".join(usr) + ">"
-            message = f"Hey {users}, {msg}"
-        elif isinstance(usr, str):
-            message = f"Hey <{usr}>, {msg}"
-        else:
-            message = f"{msg}. Praise Dan |('')|"
-        slack_message = {'text': message}
-        async with aiohttp.ClientSession as session:
-            async with session.post(url=SLACK_HOOK,
-                                    json=slack_message,
-                                    headers={'Content-Type': 'application/json'}
-                                    ) as result:
-                reply = await result.json()
-        logging.info(f"Slacked user, response: {reply}")
+        async with session.post(url=SLACK_HOOK,
+                                json=slack_message,
+                                headers={'Content-Type': 'application/json'}
+                                ) as result:
+            reply = await result.read()
+        logger.info(f"Slacked {usr}, response: {reply}")
     except Exception as e:
-        logging.warning(f"Slack Error: {e}")
+        logger.warning(f"Slack Error: {e}")
     return
 
 
 # The following function is taken from https://stackoverflow.com/questions/2183233
 # Checkout module haggis for more information
-def add_log_lvl(name, num, method_name=None):
+def add_log_lvl(name, num, method_name):
     """
     Comprehensively adds a new logging level to the `logging` module and the
     currently configured logging class.
@@ -126,6 +177,7 @@ def add_log_lvl(name, num, method_name=None):
     def logForLevel(self, message, *args, **kwargs):
         if self.isEnabledFor(num):
             self._log(num, message, args, **kwargs)
+
     def logToRoot(message, *args, **kwargs):
         logging.log(num, message, *args, **kwargs)
 
@@ -135,27 +187,10 @@ def add_log_lvl(name, num, method_name=None):
     setattr(logging, method_name, logToRoot)
 
 
-# This function maintains sanity
-def peck_parse(phrase, mode):
-    """
-    Takes in a string containing location (left, right, center)
-     and outputs a string that matches the method to be used
-    :param phrase: string variable to be parsed
-    :param mode: 'l' for led, 'r' for key/response
-    :return:
-    """
-    logging.debug(f"Phrase received is {phrase}")
-    if mode in ['led', 'l', 'leds']:
-        if 'left' in phrase:
-            return 'peck_led_left'
-        elif 'right' in phrase:
-            return 'peck_led_right'
-        elif 'center' in phrase:
-            return 'peck_led_center'
-    elif mode in ['response', 'r']:
-        if 'left' in phrase:
-            return 'peck_left'
-        elif 'right' in phrase:
-            return 'peck_right'
-        elif 'center' in phrase:
-            return 'peck_center'
+# Proto is reserved for basic communication protocols of protobuf found in decrypt.py
+# Dispatch is reserved for zmq operations found in dispatch.py
+# State is reserved for state-machine operations found in process.py
+add_log_lvl('PROTO', 11, 'proto')
+add_log_lvl('DISPATCH', 12, 'dispatch')
+add_log_lvl('STATE', 13, 'state')
+

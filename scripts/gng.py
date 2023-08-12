@@ -5,7 +5,6 @@ import argparse
 import asyncio
 import logging
 import random
-from google.protobuf.json_format import MessageToDict
 sys.path.append(os.path.abspath(".."))
 from lib.process import *
 from lib.inform import *
@@ -15,8 +14,8 @@ from lib.dispatch import *
 __name__ = 'gng'
 
 p = argparse.ArgumentParser()
-p.add_argument("user")
 p.add_argument("birdID")
+p.add_argument("user")
 p.add_argument("config")
 p.add_argument("--response_duration", help="response window duration (in ms)",
                action='store', default=4000)
@@ -36,7 +35,7 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
                action='store', default=0)
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
-p.add_argument('--log_level', default='DEBUG')
+p.add_argument('--log_level', default='INFO')
 args = p.parse_args()
 
 state = {
@@ -54,20 +53,21 @@ state = {
 params = {
     'user': args.user,
     'active': True,
-    'response_duration': args.response_duration/1000,
-    'feed_duration': args.feed_duration,
-    'punish_duration': args.lightsout_duration,
-    'max_corrections': args.max_corrections,
+    'response_duration': int(args.response_duration)/1000,
+    'feed_duration': int(args.feed_duration),
+    'punish_duration': int(args.lightsout_duration),
+    'max_corrections': int(args.max_corrections),
     'replace': args.replace,
     'correction_timeout': args.correction_timeout,
     'cue_frequency': args.cue_frequency,
     'cue_color': args.cue_color,
-    'feed_delay': args.feed_delay,
+    'feed_delay': int(args.feed_delay),
     'min_iti': 100,
     'init_key': args.init_position,
 }
-lincoln(log=f"{args.birdID}_{__name__}.log")
-decider = Morgoth()
+
+lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
+logger = logging.getLogger('main')
 
 
 async def await_init():
@@ -77,7 +77,7 @@ async def await_init():
     def peck_init(key_msg):
         if (await_input in key_msg) and (key_msg[await_input]):
             return True
-    await decider.messenger.scry(
+    await decider.scry(
         'peck-keys',
         condition=peck_init,
     )
@@ -85,9 +85,7 @@ async def await_init():
 
 async def present_stim(stim_data):
     logger.state('Peck init registered, presenting stim')
-    duration, handle = await decider.play(stim_data['name'])
-    logger.state(f"Stim will play for {duration}s")
-    await handle
+    await decider.play(stim_data['name'])
     return
 
 
@@ -109,7 +107,7 @@ async def await_response(stim_data, correction):
                 return True
         return False
 
-    responded, _, rtime = await decider.messenger.scry(
+    responded, _, rtime = await decider.scry(
         'peck-keys',
         condition=resp_check,
         timeout=params['response_duration']
@@ -148,7 +146,7 @@ async def complete(cue_loc, stim_data, correction, response, rtime):
         'stimulus': stim_data['name']
     })
     logger.info(f"Trial {state['trial']} completed. Logging trial.")
-    await log_trial(msg=state.copy())
+    await post_host(msg=state.copy(), target='trials')
     # Advance
     if (response == 'timeout') & params['correction_timeout']:
         correction += 1
@@ -173,17 +171,21 @@ def correction_check(correction):
 
 async def main():
     # Start logging
+    global decider
+    decider = Morgoth()
     await contact_host()
+    asyncio.create_task(decider.messenger.eye())
 
-    asyncio.create_task(decider.keep_alight())
+    await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
+    asyncio.create_task(decider.light_cycle())
 
     correction = 0
     stim_data = decider.playback.next()
 
-    logging.info("GNG.py initiated")
-    await slack(f"GNG.py initiated on {IDENTITY}", usr=args.user)
+    logger.info(f"{__name__} initiated")
+    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     while True:
         await await_init()
@@ -196,6 +198,11 @@ if __name__ == "gng":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.warning("SIGINT Detected, shutting down.")
-        asyncio.run(slack("PyCrust GNG is shutting down", usr=args.user))
+        logger.warning("Keyboard Interrupt Detected, shutting down.")
+        sys.exit("Keyboard Interrupt Detected, shutting down.")
+    except Exception as e:
+        logger.error(f"Error encountered {e}")
+        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
+        print(e)
+        sys.exit("Error Detected, shutting down.")
 
