@@ -1,0 +1,7 @@
+## Py_CRust: Python Client for Decide
+
+Decide is an event-driven state-machine framework for running behavioral experiments. Responses generate interrupts that trigger transitions between states. All events are logged and can(not) propagate to sockets-based web interfaces for online monitoring of behavior. Multiple devices can be connected to a host computer, which can collate data and provide additional monitoring services, permitting safe maintenance on closed economies. Implementing new training paradigms involves wiring together states and events and is intended to require minimal programming skill. The software will support arbitrary hardware configurations, allowing you to design custom interfaces for your experimental needs.
+
+This is the second-generation Decide client, developed in tandem with https://github.com/melizalab/decide-rs. While `decide-rs` controls the core functionality of hardware integration and event capture, `py_crust` processes the captured information, logs it and issues directives in accordance with the experiment design. For an easy comparison to the first-generation `Decide` module, `decide-rs` is equivalent to `decide`'s `scripts/decide-ctrl.js`, while `py_crust`'s experiment scripts are ported from `decide`'s scripts.
+
+See [[docs/decide]] for more information.

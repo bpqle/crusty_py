@@ -2,7 +2,7 @@ import json
 import numpy as np
 import zmq.asyncio
 
-from .errata import pub_err
+from .errata import pub_err, state_err
 from .dispatch import Sauron
 from .inform import *
 import asyncio
@@ -20,7 +20,7 @@ class Morgoth:
             self.messenger = messenger
         else:
             self.messenger = Sauron()
-        logger.state("Apparatus-class Object created. Praise Dan.")
+        logger.state("Apparatus initiated.")
 
     async def scry(self, component, condition, failure=None, timeout=None):
         """
@@ -96,13 +96,15 @@ class Morgoth:
         if int(interval_check['timeout']) != duration:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
 
-    async def set_light(self, interval=300):
+    async def set_light(self, interval=300000):
         """
         Configure house light duration
         :param interval: duration (ms) to update house light
         :return:
         """
-        self.sun = Sun()
+        if interval > 1000:
+            interval = interval / 1000
+        self.sun = Sun(interval)
         await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
                                      body={'clock_interval': interval})
@@ -114,6 +116,14 @@ class Morgoth:
                          f" got {interval_check['clock_interval']}")
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
+        """
+
+        :param cfg: full path to JSON config file
+        :param shuffle: bool, defaults to True, shuffle playlist in config file
+        :param replace: bool, defaults to True, pull from entire playlist every iteration
+        :param get_cues: bool, defaults to True, infer correct corresponding LED cue light.
+        :return:
+        """
         self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
         logger.state("Requesting stimuli directory change")
         await self.messenger.command(
@@ -190,6 +200,10 @@ class Morgoth:
         return
 
     async def cues_off(self):
+        """
+        Sets all LED cues to off
+        :return:
+        """
         for pos in ['peck-leds-left', 'peck-leds-right', 'peck-leds-center']:
             await self.cue(pos, 'off')
 
@@ -199,8 +213,13 @@ class Morgoth:
         Should be run within a create_task() and not awaited
         :return:
         """
+        timeout = self.sun.interval*2 + 1  # give an extra 10 seconds
+        from queue import Empty
         while True:
-            decoded = await self.messenger.light_q.get()
+            try:
+                decoded = await self.messenger.light_q.get(timeout=timeout)  # timeout in seconds
+            except Empty:
+                raise state_err(f"No house light updates received in {timeout}s. Decide-rs may be down")
             self.sun.update(decoded)
             logger.state("House-light state updated")
 
@@ -308,11 +327,12 @@ class Morgoth:
 
 
 class Sun:
-    def __init__(self):
+    def __init__(self, interval):
         self.manual = False
         self.dyson = True
         self.brightness = 0
         self.daytime = True
+        self.interval = interval
 
     def update(self, decoded):
         logger.state("Updating House-Light from PUB")

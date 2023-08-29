@@ -128,8 +128,7 @@ async def complete(cue_loc, stim_data, correction, response, rtime):
     rand = random.random()
     if outcome['correct']:
         if outcome['p_reward'] >= rand:
-            await asyncio.sleep(params['feed_delay']/1000)
-            await decider.feed()
+            await decider.feed(params['feed_delay']/1000)
         result = 'feed'
     else:
         if outcome['p_punish'] >= rand:
@@ -202,7 +201,7 @@ if __name__ == "gng":
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         logger.error(f"Error encountered {e}")
-        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
         print(e)
+        asyncio.run(slack(f"{__name__} client encountered and error and will shut down.", usr=args.user))
         sys.exit("Error Detected, shutting down.")
 

@@ -47,7 +47,7 @@ params = {
     'feed_duration': args.feed_duration,
     'replace': args.replace,
     'feed_delay': args.feed_delay,
-    'min_iti': 15,
+    'min_iti': 100,
     'init_key': args.init_position,
 }
 lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
@@ -55,12 +55,12 @@ logger = logging.getLogger('main')
 
 
 async def await_init():
+    logger.state("Awaiting Init")
     await_input = peck_parse(params['init_key'], 'r')
 
     def peck_init(key_state):
         if (await_input in key_state) and (key_state[await_input]):
             return True
-
     await decider.scry(
         'peck-keys',
         condition=peck_init,
@@ -68,12 +68,13 @@ async def await_init():
 
 
 async def present_stim(stim_data):
+    logger.state("Presenting stimuli")
     await decider.play(stim_data['name'], poll_end=False)
     return
 
 
 async def await_response(stim_data):
-    # await cue(pb.current_cue(), params['cue_color'])
+    logger.state("Awaiting response")
     response = 'timeout'
     duration = decider.playback.duration
 
@@ -97,13 +98,14 @@ async def await_response(stim_data):
 
 
 async def complete(stim_data, response, rtime):
+    logger.state("At trial exit")
     # Determine outcome
     outcome = stim_data['responses'][response]
     rand = random.random()
     result = 'no_feed'
     if outcome['reinforced']:
         if outcome['p_reward'] >= rand:
-            await decider.feed(params['feed_delay'])
+            await decider.feed(params['feed_delay']/1000)
             result = 'feed'
     # Log Trial
     state.update({
@@ -154,9 +156,9 @@ if __name__ == "interrupt-gng":
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
         sys.exit("Keyboard Interrupt Detected, shutting down.")
-    except Exception:
-        logger.error(f"Error encountered {traceback.format_exc()}")
-        asyncio.run(slack(f"{__name__} client encountered an error and has shut down.", usr=args.user))
-        traceback.print_exc()
+    except Exception as e:
+        logger.error(f"Error encountered {e}")
+        print(e)
+        asyncio.run(slack(f"{__name__} client encountered and error and will shut down.", usr=args.user))
         sys.exit("Error Detected, shutting down.")
 

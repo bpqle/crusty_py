@@ -15,5 +15,5 @@ def rep_err(msg=None, comp=None, e=None):
             raise Exception(f"{msg}, component {comp}")
 
 
-def experiment_err(msg=None):
+def state_err(msg=None):
     raise RuntimeError(msg)

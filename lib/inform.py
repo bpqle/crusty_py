@@ -5,27 +5,40 @@ import sys
 import time
 import os
 import json
-
-with open("/root/.config/py_crust/config.yml", "r") as f:
-    try:
-        config = yaml.safe_load(f)
-    except yaml.YAMLError:
-        logging.error("Unable to load py_crust configuration")
-
-DECIDE_VERSION = config['DECIDE_VERSION'].encode('utf-8')
-REQ_ENDPOINT = config['REQ_ENDPOINT']
-PUB_ENDPOINT = config['PUB_ENDPOINT']
-TIMEOUT = config['TIMEOUT']
-SLACK_HOOK = config['SLACK_HOOK']
-LOCAL_LOG = config['LOCAL_LOG']
-CONTACT_HOST = config['CONTACT_HOST']
-HIVEMIND = config['HOST_ADDR']
-IDENTITY = os.uname()[1]
-HOST_LOG = None
 logger = logging.getLogger('main')
 
 
+def config_setup():
+    with open("/root/.config/py_crust/config.yml", "r") as f:
+        try:
+            config = yaml.safe_load(f)
+        except yaml.YAMLError:
+            logging.error("Unable to load py_crust configuration")
+
+    global DECIDE_VERSION
+    DECIDE_VERSION = config['DECIDE_VERSION'].encode('utf-8')
+    global REQ_ENDPOINT
+    REQ_ENDPOINT = config['REQ_ENDPOINT']
+    global PUB_ENDPOINT
+    PUB_ENDPOINT = config['PUB_ENDPOINT']
+    global TIMEOUT
+    TIMEOUT = config['TIMEOUT']
+    global SLACK_HOOK
+    SLACK_HOOK = config['SLACK_HOOK']
+    global LOCAL_LOG
+    LOCAL_LOG = config['LOCAL_LOG']
+    global CONTACT_HOST
+    CONTACT_HOST = config['CONTACT_HOST']
+    global HIVEMIND
+    HIVEMIND = config['HOST_ADDR']
+    global IDENTITY
+    IDENTITY = os.uname()[1]
+    global HOST_LOG
+    HOST_LOG = None
+
+
 def lincoln(log, level='DEBUG'):
+    config_setup()
 
     # Courtesy of https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
     class CustomFormatter(logging.Formatter):
@@ -39,17 +52,18 @@ def lincoln(log, level='DEBUG'):
         red = "\x1b[31m"  # error
         bold_red = "\x1b[31;1m"
         reset = "\x1b[0m"
-        format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+        begin = "%(asctime)s - %(name)s - %(levelname)s:"
+        end = " - %(message)s (%(filename)s:%(lineno)d)"
 
         FORMATS = {
-            logging.DEBUG: white + format + reset,
-            logging.PROTO: green + format + reset,
-            logging.DISPATCH: blue + format + reset,
-            logging.STATE: magenta + format + reset,
-            logging.INFO: cyan + format + reset,
-            logging.WARNING: yellow + format + reset,
-            logging.ERROR: red + format + reset,
-            logging.CRITICAL: bold_red + format + reset
+            logging.DEBUG: magenta + begin + reset + end,
+            logging.PROTO: blue + begin + reset + end,
+            logging.DISPATCH: cyan + begin + reset + end,
+            logging.STATE: green + begin + reset + end,
+            logging.INFO: white + begin + reset + end,
+            logging.WARNING: yellow + begin + reset + end,
+            logging.ERROR: red + begin + reset + end,
+            logging.CRITICAL: bold_red + begin + reset + end
         }
 
         def format(self, record):
@@ -143,7 +157,7 @@ async def slack(msg, usr=None):
     if isinstance(usr, str):
         message = f"Hey <{usr}>, {msg}"
     else:
-        message = f"{msg}. Praise Dan |('')|"
+        message = f"{msg}. Praise Dan ('')"
     slack_message = {'text': message}
     try:
         async with session.post(url=SLACK_HOOK,

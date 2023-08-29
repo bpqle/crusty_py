@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import os
 import sys
 import argparse
@@ -10,7 +11,7 @@ from lib.process import *
 from lib.inform import *
 from lib.dispatch import *
 
-# Test playback functionality
+# Test playback functionality, including interruption.
 __name__ = 'playback_test'
 
 LOCAL_LOG = False

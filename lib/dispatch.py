@@ -62,7 +62,7 @@ class Sauron:
                          f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
 
     async def eye(self):
-        logger.dispatch("Sauron's Eye watching")
+        logger.dispatch("The Eye is watching")
         while True:
             *topic, msg = await self.subber.recv_multipart()
             state, comp = topic[0].decode("utf-8").split("/")
@@ -76,7 +76,7 @@ class Sauron:
                 'name': comp,
                 'state': decoded.copy()
             }
-            logger.dispatch(f"Eye spy emitted pub message from {comp}: {decoded}")
+            logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
             await post_host(msg, target='events')
             # add to queue
             await self.queue.put([comp, decoded])

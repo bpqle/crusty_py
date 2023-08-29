@@ -1,5 +1,6 @@
+# Simple zmq async pattern for reference
+
 import asyncio
-import time
 import random
 import zmq
 import zmq.asyncio
@@ -9,7 +10,7 @@ async def back():
     context = zmq.Context()
     socket = context.socket(zmq.PUB)
     socket.bind("tcp://*:5555")
-    i=0
+    i = 0
     while True:
         topic = random.randrange(1, 3)
         socket.send_string(f"{topic} {i}")
