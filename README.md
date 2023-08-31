@@ -4,4 +4,4 @@ Decide is an event-driven state-machine framework for running behavioral experim
 
 This is the second-generation Decide client, developed in tandem with https://github.com/melizalab/decide-rs. While `decide-rs` controls the core functionality of hardware integration and event capture, `py_crust` processes the captured information, logs it and issues directives in accordance with the experiment design. For an easy comparison to the first-generation `Decide` module, `decide-rs` is equivalent to `decide`'s `scripts/decide-ctrl.js`, while `py_crust`'s experiment scripts are ported from `decide`'s scripts.
 
-See [[docs/decide]] for more information.
+See [Documentation](docs/decide.md) for more information.

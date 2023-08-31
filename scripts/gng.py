@@ -1,13 +1,11 @@
 #!/usr/bin/python3
-import os
 import sys
 import argparse
 import asyncio
 import logging
 import random
-sys.path.append(os.path.abspath(".."))
+from lib.logging import lincoln
 from lib.process import *
-from lib.inform import *
 from lib.dispatch import *
 
 
@@ -200,8 +198,9 @@ if __name__ == "gng":
         logger.warning("Keyboard Interrupt Detected, shutting down.")
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
-        logger.error(f"Error encountered {e}")
-        print(e)
+        import traceback
+        logger.error(f"Error encountered: {e}")
+        print(traceback.format_exc())
         asyncio.run(slack(f"{__name__} client encountered and error and will shut down.", usr=args.user))
         sys.exit("Error Detected, shutting down.")
 

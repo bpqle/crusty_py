@@ -2,9 +2,9 @@ import json
 import numpy as np
 import zmq.asyncio
 
+from .inform import *
 from .errata import pub_err, state_err
 from .dispatch import Sauron
-from .inform import *
 import asyncio
 import logging
 
@@ -103,7 +103,7 @@ class Morgoth:
         :return:
         """
         if interval > 1000:
-            interval = interval / 1000
+            interval = int(interval / 1000)
         self.sun = Sun(interval)
         await self.messenger.command(request_type="SetParameters",
                                      component='house-light',
@@ -217,8 +217,8 @@ class Morgoth:
         from queue import Empty
         while True:
             try:
-                decoded = await self.messenger.light_q.get(timeout=timeout)  # timeout in seconds
-            except Empty:
+                decoded = await asyncio.wait_for(self.messenger.light_q.get(), timeout=timeout)  # timeout in seconds
+            except asyncio.TimeoutError:
                 raise state_err(f"No house light updates received in {timeout}s. Decide-rs may be down")
             self.sun.update(decoded)
             logger.state("House-light state updated")

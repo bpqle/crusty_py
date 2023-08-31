@@ -4,9 +4,8 @@ import zmq.asyncio
 from enum import Enum
 from .inform import *
 from .decrypt import Component
-from lib.generator_hex import decide_pb2 as dc_db
+from .generator_hex import decide_pb2 as dc_db
 from google.protobuf.json_format import MessageToDict
-
 logger = logging.getLogger('main')
 
 

@@ -1,14 +1,13 @@
 #!/usr/bin/python3
-import os
 import sys
-
-sys.path.append(os.path.abspath(".."))
-from lib.process import *
-from lib.inform import *
 import argparse
 import asyncio
 import logging
 import random
+from lib.logging import lincoln
+from lib.process import *
+from lib.dispatch import *
+
 
 __name__ = 'shape'
 

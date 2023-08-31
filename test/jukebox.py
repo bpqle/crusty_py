@@ -6,10 +6,10 @@ import argparse
 import asyncio
 import logging
 import traceback
-sys.path.append(os.path.abspath(".."))
-from lib.process import *
-from lib.inform import *
-from lib.dispatch import *
+sys.path.append(os.path.abspath("../scripts"))
+from scripts.lib.process import *
+from scripts.lib.logging import *
+from scripts.lib.dispatch import *
 
 # Test playback functionality, including interruption.
 __name__ = 'playback_test'

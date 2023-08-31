@@ -25,4 +25,4 @@ Following installation of `python`, if you would like to use `poetry`, run `whic
 
 ## BEAGLEBONE SIDE
 ### Useful Links:
-https://superuser.com/questions/610819/how-to-resize-img-file-created-with-dd
+https://askubuntu.com/questions/1174487/re-size-the-img-for-smaller-sd-card-how-to-shrink-a-bootable-sd-card-image

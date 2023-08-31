@@ -1,13 +1,13 @@
 #!/usr/bin/python3
-import os
 import sys
-sys.path.append(os.path.abspath(".."))
-from lib.process import *
-from lib.inform import *
+import argparse
 import asyncio
 import logging
-import argparse
-import zmq
+import random
+from lib.logging import lincoln
+from lib.process import *
+from lib.dispatch import *
+
 
 __name__ = 'lights'
 
@@ -59,7 +59,7 @@ if __name__ == "lights":
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         logger.error(f"Error encountered {e}")
-        await slack(f"{__name__} client encountered and error and has shut down.", usr=args.user)
         print(e)
+        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
         sys.exit("Error Detected, shutting down.")
 
