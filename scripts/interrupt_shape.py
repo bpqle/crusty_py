@@ -62,7 +62,7 @@ async def main():
     asyncio.create_task(decider.light_cycle())
 
     logger.info(f"{__name__} initiated")
-    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
+    slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     state['block'] = int(args.block)
 
@@ -241,7 +241,7 @@ async def block3_auton():
         await asyncio.sleep(iti)
 
         if state['trial'] == params['block_length']:
-            await slack(f"Interrupt Shape completed for {state['subject']}. Trials will continue running",
+            slack(f"Interrupt Shape completed for {state['subject']}. Trials will continue running",
                         usr=params['user'])
             logger.info('Shape completed')
     else:
@@ -253,9 +253,12 @@ if __name__ == 'interrupt-shape':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
+        slack(f"{__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
-        logger.error(f"Error encountered {e}")
-        print(e)
-        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
+        import traceback
+        logger.error(f"Error encountered: {e}")
+        print(traceback.format_exc())
+        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
+

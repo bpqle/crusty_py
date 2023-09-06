@@ -182,7 +182,7 @@ async def main():
     stim_data = decider.playback.next()
 
     logger.info(f"{__name__} initiated")
-    await slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
+    slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
 
     while True:
         await await_init()
@@ -196,11 +196,13 @@ if __name__ == "gng":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
+        slack(f"{__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
         import traceback
         logger.error(f"Error encountered: {e}")
         print(traceback.format_exc())
-        asyncio.run(slack(f"{__name__} client encountered and error and will shut down.", usr=args.user))
+        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
+
 

@@ -42,7 +42,8 @@ class Morgoth:
             while True:
                 comp, state = await self.messenger.queue.get()
                 logger.state(f"Scry {component} - test found message in queue of {comp}")
-                if (comp == component) & func(state):
+                result = True if func(state) else False
+                if (comp == component) & result:
                     end = time.time()
                     timer = end - start
                     message = state
@@ -213,7 +214,7 @@ class Morgoth:
         Should be run within a create_task() and not awaited
         :return:
         """
-        timeout = self.sun.interval*2 + 1  # give an extra 10 seconds
+        timeout = self.sun.interval + 10  # give an extra 10 seconds
         from queue import Empty
         while True:
             try:

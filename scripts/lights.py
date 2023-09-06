@@ -38,7 +38,7 @@ async def main():
 
     logging.info("Lights.py initiated")
 
-    await slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
+    slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
 
     if args.feed:
         logger.info(f"Feeding requested at intervals of {args.feed_duration} ms. Setting parameters.")
@@ -56,10 +56,13 @@ if __name__ == "lights":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
+        slack(f"{__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
     except Exception as e:
-        logger.error(f"Error encountered {e}")
-        print(e)
-        asyncio.run(slack(f"{__name__} client encountered and error and has shut down.", usr=args.user))
+        import traceback
+        logger.error(f"Error encountered: {e}")
+        print(traceback.format_exc())
+        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
+
 

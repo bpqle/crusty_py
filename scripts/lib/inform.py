@@ -1,5 +1,6 @@
 import logging
 import aiohttp
+import requests
 import time
 import os
 import json
@@ -76,20 +77,19 @@ async def post_dropped():
         return
 
 
-async def slack(msg, usr=None):
-    global session
+def slack(msg, usr=None):
     if isinstance(usr, str):
         message = f"Hey <{usr}>, {msg}"
     else:
         message = f"{msg}. Praise Dan ('')"
     slack_message = {'text': message}
     try:
-        async with session.post(url=SLACK_HOOK,
-                                json=slack_message,
-                                headers={'Content-Type': 'application/json'}
-                                ) as result:
-            reply = await result.read()
-        logger.info(f"Slacked {usr}, response: {reply}")
+        with requests.post(
+            SLACK_HOOK,
+            json=slack_message,
+            headers={'Content-Type': 'application/json'}
+        ) as response:
+            logger.info(f"Slacked {usr}, response: {response.content}")
     except Exception as e:
         logger.warning(f"Slack Error: {e}")
     return
