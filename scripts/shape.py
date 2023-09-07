@@ -55,40 +55,55 @@ logger = logging.getLogger('main')
 
 
 async def main():
-    # Start logging
     global decider
     decider = Morgoth()
+    # Start logging for messages
     await contact_host()
-    asyncio.create_task(decider.messenger.eye())
-
+    # Initialize components
     await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
-    asyncio.create_task(decider.light_cycle())
+
+    logger.info(f"{__name__} initiated")
+    slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
+
+    try:
+        await asyncio.gather(
+            decider.messenger.eye(), decider.light_cycle(), experiment_loop(),
+            return_exceptions=False
+        )
+    except Exception as error:
+        import traceback
+        logger.error(f"Error encountered: {error}")
+        print(traceback.format_exc())
+        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
+        sys.exit("Error Detected, shutting down.")
+
+
+async def experiment_loop():
     if args.fforward or (args.block == 4):
         state['block'] = 4
     else:
         state['block'] = int(args.block)
-
-    logger.info(f"{__name__} initiated")
-    slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
-
-    while True:
-        if not decider.sun.daytime:
-            logger.info("Paused")
-            await asyncio.sleep(300)  # seconds
-            continue
-        if state['block'] == 0:
-            await block0_feeder()
-        elif state['block'] == 1:
-            await block1_patience()
-        elif state['block'] == 2:
-            await block2_peck()
-        elif state['block'] == 3:
-            await block3_extend()
-        elif state['block'] == 4:
-            await block4_auton()
-        else:
-            raise RuntimeError(f"Bad shape block encountered {state['block']}")
+    try:
+        while True:
+            if not decider.sun.daytime:
+                logger.info("Paused")
+                await asyncio.sleep(300)  # seconds
+                continue
+            if state['block'] == 0:
+                await block0_feeder()
+            elif state['block'] == 1:
+                await block1_patience()
+            elif state['block'] == 2:
+                await block2_peck()
+            elif state['block'] == 3:
+                await block3_extend()
+            elif state['block'] == 4:
+                await block4_auton()
+            else:
+                raise RuntimeError(f"Bad shape block encountered {state['block']}")
+    except asyncio.CancelledError:
+        logger.warning("Main experiment loop has been cancelled due to another task's failure.")
 
 
 async def block0_feeder():
@@ -330,10 +345,4 @@ if __name__ == 'shape':
         logger.warning("Keyboard Interrupt Detected, shutting down.")
         slack(f"{__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
-    except Exception as e:
-        import traceback
-        logger.error(f"Error encountered: {e}")
-        print(traceback.format_exc())
-        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
-        sys.exit("Error Detected, shutting down.")
 

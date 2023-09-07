@@ -62,25 +62,28 @@ class Sauron:
 
     async def eye(self):
         logger.dispatch("The Eye is watching")
-        while True:
-            *topic, msg = await self.subber.recv_multipart()
-            state, comp = topic[0].decode("utf-8").split("/")
-            proto_comp = Component(state, comp)
-            tstamp, state_msg = await proto_comp.from_pub(msg)
-            decoded = MessageToDict(state_msg,
-                                    including_default_value_fields=True,
-                                    preserving_proto_field_name=True)
-            # log event here
-            msg = {
-                'name': comp,
-                'state': decoded.copy()
-            }
-            logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
-            await post_host(msg, target='events')
-            # add to queue
-            await self.queue.put([comp, decoded])
-            if comp == 'house-light':
-                await self.light_q.put(decoded)
+        try:
+            while True:
+                *topic, msg = await self.subber.recv_multipart()
+                state, comp = topic[0].decode("utf-8").split("/")
+                proto_comp = Component(state, comp)
+                tstamp, state_msg = await proto_comp.from_pub(msg)
+                decoded = MessageToDict(state_msg,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
+                # log event here
+                msg = {
+                    'name': comp,
+                    'state': decoded.copy()
+                }
+                logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
+                await post_host(msg, target='events')
+                # add to queue
+                await self.queue.put([comp, decoded])
+                if comp == 'house-light':
+                    await self.light_q.put(decoded)
+        except asyncio.CancelledError:
+            logger.warning("Decide-Core Pub Watcher has been cancelled due to another task's failure.")
 
     async def purge(self):
         while not self.queue.empty():

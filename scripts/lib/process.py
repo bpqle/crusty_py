@@ -211,18 +211,18 @@ class Morgoth:
     async def light_cycle(self):
         """
         This function will await messages regarding light cycle update
-        Should be run within a create_task() and not awaited
-        :return:
+        Should be run within a create_task() or gather() and not blocking-awaited
         """
         timeout = self.sun.interval + 10  # give an extra 10 seconds
-        from queue import Empty
-        while True:
-            try:
+        try:
+            while True:
                 decoded = await asyncio.wait_for(self.messenger.light_q.get(), timeout=timeout)  # timeout in seconds
-            except asyncio.TimeoutError:
-                raise state_err(f"No house light updates received in {timeout}s. Decide-rs may be down")
-            self.sun.update(decoded)
-            logger.state("House-light state updated")
+                self.sun.update(decoded)
+                logger.state("House-light state updated")
+        except asyncio.TimeoutError:
+            raise state_err(f"No house light updates received in {timeout}s. Decide-rs may be down")
+        except asyncio.CancelledError:
+            logger.warning("Light Cycle has been cancelled due to another task's failure.")
 
     async def blip(self, duration, brightness=0):
         """

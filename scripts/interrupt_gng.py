@@ -122,31 +122,45 @@ async def complete(stim_data, response, rtime):
     return stim_data
 
 
+async def experiment_loop():
+    # Get first stimulus
+    try:
+        stim_data = decider.playback.next()
+        response = None
+        while True:
+            if (response is None) or (response == 'timeout'):
+                await await_init()
+            duration = await present_stim(stim_data)
+            response, rtime = await await_response(stim_data)
+            stim_data = await complete(stim_data, response, rtime)
+    except asyncio.CancelledError:
+        logger.warning("Main experiment loop has been cancelled due to another task's failure.")
+
+
 async def main():
-    # Initiate apparatus
     global decider
     decider = Morgoth()
     # Start logging for messages
     await contact_host()
-    asyncio.create_task(decider.messenger.eye())
     # Initialize components
     await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
     await decider.init_playback(args.config, replace=args.replace)
-    asyncio.create_task(decider.light_cycle())
-    # Get first stimulus
-    stim_data = decider.playback.next()
 
     logger.info(f"{__name__} initiated")
     slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
 
-    response = None
-    while True:
-        if (response is None) or (response == 'timeout'):
-            await await_init()
-        duration = await present_stim(stim_data)
-        response, rtime = await await_response(stim_data)
-        stim_data = await complete(stim_data, response, rtime)
+    try:
+        await asyncio.gather(
+            decider.messenger.eye(), decider.light_cycle(), experiment_loop(),
+            return_exceptions=False
+        )
+    except Exception as error:
+        import traceback
+        logger.error(f"Error encountered: {error}")
+        print(traceback.format_exc())
+        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
+        sys.exit("Error Detected, shutting down.")
 
 
 if __name__ == "interrupt-gng":
@@ -156,10 +170,4 @@ if __name__ == "interrupt-gng":
         logger.warning("Keyboard Interrupt Detected, shutting down.")
         slack(f"{__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
-    except Exception as e:
-        import traceback
-        logger.error(f"Error encountered: {e}")
-        print(traceback.format_exc())
-        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
-        sys.exit("Error Detected, shutting down.")
 
