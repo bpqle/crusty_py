@@ -38,7 +38,7 @@ args = p.parse_args()
 
 state = {
     'subject': args.birdID,  # logged
-    'experiment': args.config,  # logged
+    'experiment': os.path.basename(args.config).split(".")[0],  # logged
     'name': __name__,  # logged
     'trial': 0,  # logged
     'result': None,  # logged
