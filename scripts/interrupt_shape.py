@@ -60,7 +60,7 @@ async def main():
     await decider.set_feeder(duration=params['feed_duration'])
 
     logger.info(f"{__name__} initiated")
-    slack(f"{__name__} initiated on {IDENTITY}", usr=args.user)
+    slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
 
     try:
         await asyncio.gather(
@@ -71,7 +71,7 @@ async def main():
         import traceback
         logger.error(f"Error encountered: {error}")
         print(traceback.format_exc())
-        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
+        slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
 
 
@@ -267,6 +267,6 @@ if __name__ == 'interrupt-shape':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
-        slack(f"{__name__} client was manually shut down.", usr=args.user)
+        slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
 

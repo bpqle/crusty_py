@@ -42,8 +42,8 @@ class Morgoth:
             while True:
                 comp, state = await self.messenger.queue.get()
                 logger.state(f"Scry {component} - test found message in queue of {comp}")
-                result = True if func(state) else False
-                if (comp == component) & result:
+                result = True if (comp == component) & (func(state)) else False
+                if result:
                     end = time.time()
                     timer = end - start
                     message = state
@@ -234,7 +234,7 @@ class Morgoth:
         logger.state("Manually changing house lights")
         a = asyncio.create_task(self.scry(
             'house-light',
-            condition=lambda pub: True if ('brightness' in pub) and (pub['brightness'] == brightness) else False,
+            condition=lambda pub: True if (pub['manual']) and (pub['brightness'] == brightness) else False,
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -252,7 +252,7 @@ class Morgoth:
         logger.state("Returning house lights to cycle")
         a = asyncio.create_task(self.scry(
             'house-light',
-            condition=lambda pub: ('manual' in pub) and (not pub['manual']),
+            condition=lambda pub: not pub['manual'],
             failure=pub_err,
         ))
         b = asyncio.create_task(self.messenger.command(

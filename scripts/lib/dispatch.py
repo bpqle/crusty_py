@@ -19,6 +19,9 @@ class Sauron:
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
 
+        self.ping = self.caller.get_monitor_socket()
+        self.pong = self.subber.get_monitor_socket()
+
         self.queue = asyncio.Queue()
         self.light_q = asyncio.Queue()
         logger.dispatch("REQ and PUB sockets created.")
@@ -63,27 +66,49 @@ class Sauron:
     async def eye(self):
         logger.dispatch("The Eye is watching")
         try:
-            while True:
-                *topic, msg = await self.subber.recv_multipart()
-                state, comp = topic[0].decode("utf-8").split("/")
-                proto_comp = Component(state, comp)
-                tstamp, state_msg = await proto_comp.from_pub(msg)
-                decoded = MessageToDict(state_msg,
-                                        including_default_value_fields=True,
-                                        preserving_proto_field_name=True)
-                # log event here
-                msg = {
-                    'name': comp,
-                    'state': decoded.copy()
-                }
-                logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
-                await post_host(msg, target='events')
-                # add to queue
-                await self.queue.put([comp, decoded])
-                if comp == 'house-light':
-                    await self.light_q.put(decoded)
+            await asyncio.gather(self._catch(), self._bee_gee())
         except asyncio.CancelledError:
             logger.warning("Decide-Core Pub Watcher has been cancelled due to another task's failure.")
+
+    async def _catch(self):
+        while True:
+            *topic, msg = await self.subber.recv_multipart()
+            state, comp = topic[0].decode("utf-8").split("/")
+            proto_comp = Component(state, comp)
+            tstamp, state_msg = await proto_comp.from_pub(msg)
+            decoded = MessageToDict(state_msg,
+                                    including_default_value_fields=True,
+                                    preserving_proto_field_name=True)
+            # log event here
+            msg = {
+                'name': comp,
+                'state': decoded.copy()
+            }
+            logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
+            await post_host(msg, target='events')
+            # add to queue
+            await self.queue.put([comp, decoded])
+            if comp == 'house-light':
+                await self.light_q.put(decoded)
+
+    async def _bee_gee(self):
+        from zmq.utils.monitor import recv_monitor_message
+        events = {}
+        for name in dir(zmq):
+            if name.startswith('EVENT_'):
+                value = getattr(zmq, name)
+                events[value] = name
+        while True:
+            for heart in [self.ping, self.pong]:
+                heartbeat = heart.poll(timeout=0.1)
+                if heartbeat != 0:
+                    evt = {}
+                    mon_evt = await recv_monitor_message(heart)
+                    evt.update(mon_evt)
+                    evt['description'] = events[evt['event']]
+                    logger.warning(f"Event from {heart.getsockopt_string} monitor socket: {evt['description']}")
+                    if evt['event'] in [zmq.EVENT_DISCONNECTED, zmq.EVENT_CLOSED]:
+                        raise RuntimeError(f"Event {evt['description']} on decide-core zmq sockets. Check for crash.")
 
     async def purge(self):
         while not self.queue.empty():

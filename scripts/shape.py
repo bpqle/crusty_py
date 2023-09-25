@@ -75,7 +75,7 @@ async def main():
         import traceback
         logger.error(f"Error encountered: {error}")
         print(traceback.format_exc())
-        slack(f"{__name__} client encountered and error and will shut down.", usr=args.user)
+        slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
 
 
@@ -343,6 +343,6 @@ if __name__ == 'shape':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
-        slack(f"{__name__} client was manually shut down.", usr=args.user)
+        slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
 
