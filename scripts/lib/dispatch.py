@@ -109,6 +109,7 @@ class Sauron:
                     logger.warning(f"Event from {heart.getsockopt_string} monitor socket: {evt['description']}")
                     if evt['event'] in [zmq.EVENT_DISCONNECTED, zmq.EVENT_CLOSED]:
                         raise RuntimeError(f"Event {evt['description']} on decide-core zmq sockets. Check for crash.")
+            await asyncio.sleep(5)
 
     async def purge(self):
         while not self.queue.empty():
