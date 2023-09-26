@@ -50,7 +50,7 @@ async def post_host(msg: dict, target):
                                     headers={'Content-Type': 'application/json'}
                                     ) as result:
                 if result.status != 201:
-                    reply = await result.json(encoding=None)
+                    reply = await result.json(content_type=None)
                     logger.error('POST Result Error from contacting Decide-Host:', reply.status)
                     with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
                         json.dump(msg, file)
