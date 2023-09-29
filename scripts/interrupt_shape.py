@@ -120,7 +120,6 @@ async def block0_feeder():
 
 
 async def block1_patience():
-    await decider.cues_off()
     iti_var = 60
     await_input = peck_parse(params['init_position'], 'r')
     cue_pos = peck_parse(params['init_position'], 'l')
@@ -175,7 +174,6 @@ async def block1_patience():
 
 
 async def block2_peck():
-    await decider.cues_off()
     iti_var = 15
     iti = int(random.random() * iti_var)
 

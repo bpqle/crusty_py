@@ -96,6 +96,8 @@ class Morgoth:
                                                       body=None)
         if int(interval_check['timeout']) != duration:
             logger.error(f"Stepper motor timeout parameter not set to {duration}")
+        global FEED_TIME
+        FEED_TIME = duration
 
     async def set_light(self, interval=300000):
         """
@@ -170,7 +172,7 @@ class Morgoth:
             'stepper-motor',
             condition=lambda pub: ('running' in pub) and (not pub['running']),
             failure=pub_err,
-            timeout=8000
+            timeout=FEED_TIME + TIMEOUT
         )
         logger.state('motor stop confirmed by decide-rs')
         await self.messenger.purge()
