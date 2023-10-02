@@ -76,7 +76,7 @@ async def await_response(stim_data):
     logger.state("Awaiting response")
     response = 'timeout'
     duration = decider.playback.duration
-
+    logger.state("Duration of stim is ", duration)
     def resp_check(key_state):
         nonlocal response
         for k, v in key_state.items():

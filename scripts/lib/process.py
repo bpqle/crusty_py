@@ -41,21 +41,20 @@ class Morgoth:
             nonlocal interrupted, message, start, timer, end
             while True:
                 comp, state = await self.messenger.queue.get()
-                logger.state(f"Scry {component} - test found message in queue of {comp}")
-                result = True if (comp == component) & (func(state)) else False
+                logger.state(f"Scry {component} - found item in queue from {comp}")
+                result = True if (comp == component) & (func(state) is True) else False
                 if result:
                     end = time.time()
                     timer = end - start
                     message = state
                     interrupted = True
                     logger.debug(f"Scry {component} - check succeeded. Ending.")
-                    # self.messenger.queue.task_done()
                     return
                 else:
                     logger.debug(f"Scry {component} - check failed. Continuing.")
-                    # self.messenger.queue.task_done()
-                    if comp != component:
+                    if (comp != component) or (component == "audio-playback"):
                         await self.messenger.queue.put([comp, state])
+                        logger.debug("Found message returned to end of queue")
                     await asyncio.sleep(0.001)
                     continue
 
@@ -134,7 +133,7 @@ class Morgoth:
             component='audio-playback',
             body={'audio_dir': self.playback.dir}
         )
-        # The following has a higher timeout due to the blocking action of stimuli import on decide-rs
+        # The following blocks and waits due to the blocking action of stimuli import on decide-rs
         dir_check = await self.messenger.command(
             request_type="GetParameters",
             component='audio-playback',
