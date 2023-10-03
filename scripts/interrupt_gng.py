@@ -82,11 +82,11 @@ async def await_response(stim_data):
 
     def resp_check(pub_msg):
         nonlocal response
-        if ('playback' in pub_msg) & (not pub_msg['playback']):
+        if ('playback' in pub_msg) and (not pub_msg['playback']):
             return True # playback ended
         elif ('peck_left' in pub_msg):
             for k, v in key_state.items():
-                if (k in stim_data['responses']) & bool(v):
+                if (k in stim_data['responses']) and bool(v):
                     response = k
                     return True
         return False

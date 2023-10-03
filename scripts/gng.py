@@ -100,7 +100,7 @@ async def await_response(stim_data, correction):
     def resp_check(pub_msg):
         nonlocal response
         for k, v in pub_msg.items():
-            if (k in stim_data['responses']) & bool(v):
+            if (k in stim_data['responses']) and bool(v):
                 response = k
                 return True
         return False
@@ -145,10 +145,10 @@ async def complete(cue_loc, stim_data, correction, response, rtime):
     logger.info(f"Trial {state['trial']} completed. Logging trial.")
     await post_host(msg=state.copy(), target='trials')
     # Advance
-    if (response == 'timeout') & params['correction_timeout']:
+    if (response == 'timeout') and params['correction_timeout']:
         correction += 1
         logger.debug("Response was timeout, next trial is correction trial.")
-    elif (response != 'timeout') & (not outcome['correct']) & (correction < params['max_corrections']):
+    elif (response != 'timeout') and (not outcome['correct']) and (correction < params['max_corrections']):
         correction += 1
         logger.debug("Next Trial correction.")
     else:

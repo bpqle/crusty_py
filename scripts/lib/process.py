@@ -37,28 +37,31 @@ class Morgoth:
         interrupted = False
         message = None
         timer = None
+        comp = None
         if isinstance(components, str):
-            topic = "state/" + components
-            self.messenger.scryer.subscribe(topic.encode("utf-8"))
             components = [components]
         elif isinstance(components, list):
-            for c in components:
-                topic = "state/" + c
-                self.messenger.scryer.subscribe(topic.encode("utf-8"))
+            components = components
         else:
             raise ValueError("Invalid arguments for scry: no component or components specified.")
 
         async def test(func):
-            nonlocal interrupted, message, start, timer, end
+            nonlocal interrupted, message, start, timer, end, comp
             while True:
+                poll_res = await.self.messenger.scryer.poll(timeout=1)
+                if not poll_res:
+                    continue
                 *topic, msg = await self.messenger.scryer.recv_multipart()
                 state, comp = topic[0].decode("utf-8").split("/")
+                logger.state(f"Scry {components} - found item in queue from {comp}")
+                if comp not in components:
+                     logger.debug(f"Scry {components} - check failed. Continuing")
+                     continue
                 proto_comp = Component(state, comp)
                 _timestamp, state_msg = await proto_comp.from_pub(msg)
                 decoded = MessageToDict(state_msg,
                                         including_default_value_fields=True,
                                         preserving_proto_field_name=True)
-                logger.state(f"Scry {components} - found item in queue from {comp}")
                 if func(decoded) is True:
                     end = time.time()
                     timer = end - start
@@ -90,9 +93,6 @@ class Morgoth:
             await test(condition)
 
         logger.state(f"Scry finished for {components}. Unsubscribing from all topics")
-        for c in components:
-            topic = "state/" + c
-            self.messenger.scryer.unsubscribe(topic.encode("utf-8"))
         return comp, interrupted, message, timer
 
     async def set_feeder(self, duration):

@@ -19,6 +19,7 @@ class Sauron:
         # Scryer doesn't subscribe to anything until told so
         self.scryer = context.socket(zmq.SUB)
         self.scryer.connect(PUB_ENDPOINT)
+        self.scryer.subscribe(b"")
         # REQ socket
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
