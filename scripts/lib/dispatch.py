@@ -80,8 +80,10 @@ class Sauron:
         while True:
             *topic, msg = await self.collector.recv_multipart()
             state, comp = topic[0].decode("utf-8").split("/")
+            logger.dispatch(f"Monitor caught emitted PUB event from {comp}")
             proto_comp = Component(state, comp)
             tstamp, state_msg = await proto_comp.from_pub(msg)
+            await asyncio.sleep(0.01)
             decoded = MessageToDict(state_msg,
                                     including_default_value_fields=True,
                                     preserving_proto_field_name=True)
@@ -90,7 +92,7 @@ class Sauron:
                 'name': comp,
                 'state': decoded.copy()
             }
-            logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
+            logger.dispatch(f"Monitor decoded message from {comp}: {decoded}")
             await post_host(msg, target='events')
             # add to light queue
             if comp == 'house-light':
@@ -104,14 +106,14 @@ class Sauron:
                 value = getattr(zmq, name)
                 events[value] = name
         while True:
-            for heart in [self.ping, self.pong]:
+            for i, heart in enumerate([self.ping, self.pong]):
                 heartbeat = heart.poll(timeout=0.1)
                 if heartbeat != 0:
                     evt = {}
                     mon_evt = await recv_monitor_message(heart)
                     evt.update(mon_evt)
                     evt['description'] = events[evt['event']]
-                    logger.warning(f"Event from {heart.getsockopt_string} monitor socket: {evt['description']}")
+                    logger.warning(f"Event from {'REQ' if i else 'PUB'} monitor socket: {evt['description']}")
                     if evt['event'] in [zmq.EVENT_DISCONNECTED, zmq.EVENT_CLOSED]:
                         raise RuntimeError(f"Event {evt['description']} on decide-core zmq sockets. Check for crash.")
             await asyncio.sleep(5)

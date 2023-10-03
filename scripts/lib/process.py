@@ -48,9 +48,6 @@ class Morgoth:
         async def test(func):
             nonlocal interrupted, message, start, timer, end, comp
             while True:
-                poll_res = await.self.messenger.scryer.poll(timeout=1)
-                if not poll_res:
-                    continue
                 *topic, msg = await self.messenger.scryer.recv_multipart()
                 state, comp = topic[0].decode("utf-8").split("/")
                 logger.state(f"Scry {components} - found item in queue from {comp}")
