@@ -80,6 +80,9 @@ async def await_response(stim_data):
     duration = decider.playback.duration
     logger.state("Duration of stim is ", duration)
 
+    # Note that we technically do not NEED to set a timeout for the following scry()
+    # In which case, calculations for stim duration need not be taken
+    # But setting a timeout allows us to catch any unreported playback error
     def resp_check(pub_msg):
         nonlocal response
         if ('playback' in pub_msg) and (not pub_msg['playback']):

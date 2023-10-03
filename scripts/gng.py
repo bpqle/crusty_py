@@ -105,7 +105,7 @@ async def await_response(stim_data, correction):
                 return True
         return False
 
-    responded, _, rtime = await decider.scry(
+    _, responded, _, rtime = await decider.scry(
         'peck-keys',
         condition=resp_check,
         timeout=params['response_duration']

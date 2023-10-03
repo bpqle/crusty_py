@@ -138,9 +138,9 @@ async def block1_patience():
                 return True
         return False
 
-    responded, msg, rtime = await decider.scry('peck-keys',
-                                               condition=resp_check,
-                                               timeout=params['response_duration'])
+    _, responded, msg, rtime = await decider.scry('peck-keys',
+                                                  condition=resp_check,
+                                                  timeout=params['response_duration'])
 
     # feed regardless of response
     await decider.cue(cue_pos, 'off')
@@ -192,9 +192,9 @@ async def block2_peck():
                 return True
         return False
 
-    responded, msg, rtime = await decider.scry('peck-keys',
-                                               condition=resp_check,
-                                               timeout=None)
+    _, responded, msg, rtime = await decider.scry('peck-keys',
+                                                  condition=resp_check,
+                                                  timeout=None)
 
     # feed regardless of response
     await decider.cue(await_input, 'off')
@@ -235,9 +235,9 @@ async def block3_auton():
                 return True
         return False
 
-    responded, msg, rtime = await decider.scry('peck-keys',
-                                               condition=resp_check,
-                                               timeout=None)
+    _, responded, msg, rtime = await decider.scry('peck-keys',
+                                                  condition=resp_check,
+                                                  timeout=None)
 
     # feed regardless of response
     if responded:  # should always be True in this block
