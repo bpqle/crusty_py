@@ -24,7 +24,7 @@ class Morgoth:
             self.messenger = Sauron()
         logger.state("Apparatus initiated.")
 
-    async def scry(self, components, components=None, condition, failure=None, timeout=None):
+    async def scry(self, components, condition, failure=None, timeout=None):
         """
         Search for incoming messages matching component name and test for specific condition
         Optional failure and timeout.
