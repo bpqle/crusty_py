@@ -24,7 +24,7 @@ class Sauron:
         self.caller.connect(REQ_ENDPOINT)
         # Monitor both REQ and PUB enpoints
         self.ping = self.caller.get_monitor_socket()
-        self.pong = self.subber.get_monitor_socket()
+        self.pong = self.collector.get_monitor_socket()
 
         # Light queue is set up to lazily process house-light update
         # TODO: Can eventually be worked out of the script.
@@ -77,7 +77,7 @@ class Sauron:
 
     async def _catch(self):
         while True:
-            *topic, msg = await self.subber.recv_multipart()
+            *topic, msg = await self.collector.recv_multipart()
             state, comp = topic[0].decode("utf-8").split("/")
             proto_comp = Component(state, comp)
             tstamp, state_msg = await proto_comp.from_pub(msg)
