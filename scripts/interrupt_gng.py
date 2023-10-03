@@ -73,27 +73,31 @@ async def present_stim(stim_data):
 
 
 async def await_response(stim_data):
+
     logger.state("Awaiting response")
     response = 'timeout'
+    rtime = None
     duration = decider.playback.duration
     logger.state("Duration of stim is ", duration)
-    def resp_check(key_state):
+
+    def resp_check(pub_msg):
         nonlocal response
-        for k, v in key_state.items():
-            if (k in stim_data['responses']) & bool(v):
-                asyncio.create_task(decider.stop())
-                response = k
-                return True
+        if ('playback' in pub_msg) & (not pub_msg['playback']):
+            return True # playback ended
+        elif ('peck_left' in pub_msg):
+            for k, v in key_state.items():
+                if (k in stim_data['responses']) & bool(v):
+                    response = k
+                    return True
         return False
 
-    responded, msg, rtime = await decider.scry('peck-keys',
-                                               condition=resp_check,
-                                               timeout=duration or params['response_duration'])
+    _, _, _, rtime = await decider.scry(['peck-keys','audio-playback'],
+                                        condition=resp_check,
+                                        timeout=duration or params['response_duration'])
 
-    if not responded:
-        return response, None
-    else:
-        return response, rtime
+    if response != 'timeout':
+        await decider.stop()
+    return response, rtime
 
 
 async def complete(stim_data, response, rtime):

@@ -3,8 +3,10 @@ import numpy as np
 import zmq.asyncio
 
 from .inform import *
+from .decrypt import Component
 from .errata import pub_err, state_err
 from .dispatch import Sauron
+from google.protobuf.json_format import MessageToDict
 import asyncio
 import logging
 
@@ -22,44 +24,56 @@ class Morgoth:
             self.messenger = Sauron()
         logger.state("Apparatus initiated.")
 
-    async def scry(self, component, condition, failure=None, timeout=None):
+    async def scry(self, components, components=None, condition, failure=None, timeout=None):
         """
         Search for incoming messages matching component name and test for specific condition
         Optional failure and timeout.
-        :param component: str, name of decide-core component
+        :param components: str or list, name(s) of decide-core component
         :param condition: fn, test the dict-type message emmited from core
         :param failure: fn, optional error/failure state, only in conjunction with timeout
         :param timeout: time(ms) to await and test messages.
         :return:
         """
-        logger.state(f"Scry process started for {component}, purging queue")
         interrupted = False
         message = None
         timer = None
+        if isinstance(components, str):
+            topic = "state/" + components
+            self.messenger.scryer.subscribe(topic.encode("utf-8"))
+            components = [components]
+        elif isinstance(components, list):
+            for c in components:
+                topic = "state/" + c
+                self.messenger.scryer.subscribe(topic.encode("utf-8"))
+        else:
+            raise ValueError("Invalid arguments for scry: no component or components specified.")
 
         async def test(func):
             nonlocal interrupted, message, start, timer, end
             while True:
-                comp, state = await self.messenger.queue.get()
-                logger.state(f"Scry {component} - found item in queue from {comp}")
-                result = True if (comp == component) & (func(state) is True) else False
-                if result:
+                *topic, msg = await self.messenger.scryer.recv_multipart()
+                state, comp = topic[0].decode("utf-8").split("/")
+                proto_comp = Component(state, comp)
+                _timestamp, state_msg = await proto_comp.from_pub(msg)
+                decoded = MessageToDict(state_msg,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
+                logger.state(f"Scry {components} - found item in queue from {comp}")
+                if func(decoded) is True:
                     end = time.time()
                     timer = end - start
-                    message = state
+                    message = decoded
                     interrupted = True
-                    logger.debug(f"Scry {component} - check succeeded. Ending.")
+                    logger.debug(f"Scry {components} - check succeeded. Ending.")
                     return
                 else:
-                    logger.debug(f"Scry {component} - check failed. Continuing.")
-                    if (comp != component) or (component == "audio-playback"):
-                        await self.messenger.queue.put([comp, state])
-                        logger.debug("Found message returned to end of queue")
-                    await asyncio.sleep(0.001)
+                    logger.debug(f"Scry {components} - check failed. Continuing.")
                     continue
 
+        logger.state(f"Scry process started for {components}, purging queue")
         start = time.time()
         if timeout is not None:
+            # Sanity check: everything from miliseconds to seconds
             timeout = timeout / 1000 if timeout > 20 else timeout
             try:
                 await asyncio.wait_for(test(condition), timeout)
@@ -71,12 +85,15 @@ class Morgoth:
                     timer = end - start
                     logger.error(f"Required response not received within timeout {timeout},"
                                  f" time elapsed is {timer}")
-                    failure(component)
+                    failure(components)
         else:
             await test(condition)
 
-        logger.state(f"Scry finished for {component}.")
-        return interrupted, message, timer
+        logger.state(f"Scry finished for {components}. Unsubscribing from all topics")
+        for c in components:
+            topic = "state/" + c
+            self.messenger.scryer.unsubscribe(topic.encode("utf-8"))
+        return comp, interrupted, message, timer
 
     async def set_feeder(self, duration):
         """
@@ -133,7 +150,9 @@ class Morgoth:
             component='audio-playback',
             body={'audio_dir': self.playback.dir}
         )
-        # The following blocks and waits due to the blocking action of stimuli import on decide-rs
+        # GetParams only used here to acquire configured sample rate.
+        # Can't get the new audio directory requested immediately since the import action on 
+        # decide-core is non-blocking. We won't know when it's completed
         dir_check = await self.messenger.command(
             request_type="GetParameters",
             component='audio-playback',
@@ -161,7 +180,7 @@ class Morgoth:
         ))
         a = asyncio.create_task(self.scry(
             'stepper-motor',
-            condition=lambda pub: ('running' in pub) and (pub['running']),
+            condition=lambda pub: pub['running'] is True,
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -169,12 +188,11 @@ class Morgoth:
         logger.state('feeding confirmed by decide-rs, awaiting motor stop')
         await self.scry(
             'stepper-motor',
-            condition=lambda pub: ('running' in pub) and (not pub['running']),
+            condition=lambda pub: not pub['running'],
             failure=pub_err,
             timeout=FEED_TIME + TIMEOUT
         )
         logger.state('motor stop confirmed by decide-rs')
-        await self.messenger.purge()
         return
 
     async def cue(self, loc, color):
@@ -188,7 +206,7 @@ class Morgoth:
         logger.state(f'Requesting cue {pos}')
         a = asyncio.create_task(self.scry(
             pos,
-            condition=lambda pub: ('led_state' in pub) and (pub['led_state'] == color),
+            condition=lambda pub: pub['led_state'] == color,
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -198,7 +216,6 @@ class Morgoth:
             body={'led_state': color}
         ))
         await asyncio.gather(a, b)
-        await self.messenger.purge()
         return
 
     async def cues_off(self):
@@ -235,7 +252,7 @@ class Morgoth:
         logger.state("Manually changing house lights")
         a = asyncio.create_task(self.scry(
             'house-light',
-            condition=lambda pub: True if (pub['manual']) and (pub['brightness'] == brightness) else False,
+            condition=lambda pub: (pub['manual']) and (pub['brightness'] == brightness),
             failure=pub_err,
             timeout=TIMEOUT
         ))
@@ -262,7 +279,6 @@ class Morgoth:
             body={'manual': False, 'dyson': True}
         ))
         await asyncio.gather(a, b)
-        await self.messenger.purge()
         logger.state("Returning house lights to cycle succeeded")
 
     async def play(self, stim=None, poll_end=True):
@@ -291,19 +307,20 @@ class Morgoth:
             timeout=TIMEOUT
         ))
         await b
-        _, pub, _ = await a
+        _, _, pub, _ = await a
 
         frame_count = pub['frame_count']
         stim_duration = frame_count / self.playback.sample_rate
         self.playback.duration = stim_duration
         if poll_end:
-            handle = asyncio.create_task(self.scry(
+            await asyncio.create_task(self.scry(
                 'audio-playback',
                 condition=lambda msg: ('playback' in msg) and (msg['playback'] is False),
                 failure=pub_err,
                 timeout=stim_duration * 1000 + TIMEOUT
             ))
-            await handle
+        else:
+            return
 
     async def stop(self):
         """
@@ -322,9 +339,7 @@ class Morgoth:
             component='audio-playback',
             body={'playback': 0}
         ))
-        await b
-        await a
-        await self.messenger.purge()
+        await asyncio.gather(a, b)
         return
 
 

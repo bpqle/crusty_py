@@ -12,17 +12,22 @@ logger = logging.getLogger('main')
 class Sauron:
     def __init__(self):
         context = zmq.asyncio.Context()
-
-        self.subber = context.socket(zmq.SUB)
-        self.subber.connect(PUB_ENDPOINT)
-        self.subber.subscribe(b"")
+        # Collector logs every event to host
+        self.collector = context.socket(zmq.SUB)
+        self.collector.connect(PUB_ENDPOINT)
+        self.collector.subscribe(b"")
+        # Scryer doesn't subscribe to anything until told so
+        self.scryer = context.socket(zmq.SUB)
+        self.scryer.connect(PUB_ENDPOINT)
+        # REQ socket
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
-
+        # Monitor both REQ and PUB enpoints
         self.ping = self.caller.get_monitor_socket()
         self.pong = self.subber.get_monitor_socket()
 
-        self.queue = asyncio.Queue()
+        # Light queue is set up to lazily process house-light update
+        # TODO: Can eventually be worked out of the script.
         self.light_q = asyncio.Queue()
         logger.dispatch("REQ and PUB sockets created.")
 
@@ -86,8 +91,7 @@ class Sauron:
             }
             logger.dispatch(f"Emitted pub message from {comp}: {decoded}")
             await post_host(msg, target='events')
-            # add to queue
-            await self.queue.put([comp, decoded])
+            # add to light queue
             if comp == 'house-light':
                 await self.light_q.put(decoded)
 
@@ -110,11 +114,6 @@ class Sauron:
                     if evt['event'] in [zmq.EVENT_DISCONNECTED, zmq.EVENT_CLOSED]:
                         raise RuntimeError(f"Event {evt['description']} on decide-core zmq sockets. Check for crash.")
             await asyncio.sleep(5)
-
-    async def purge(self):
-        while not self.queue.empty():
-            self.queue.get_nowait()
-            # self.queue.task_done()
 
 
 class Request:
