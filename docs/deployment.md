@@ -35,6 +35,6 @@ You can download a pre-compiled `protoc` and place the files in the respective l
 
 All proto files can be compiled at once using
 ```
- protoc -I ./protos --python_out=./lib/generator_hex ./protos/*.proto --pyi_out=./lib/generator_hex
+ protoc -I ./protos --python_out=./scripts/lib/generator_hex ./protos/*.proto --pyi_out=./scripts/lib/generator_hex
 ```
-This will generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./lib/generator_hex` for API reference.
+This will generate google's vanilla `.py` files with `_pb2` in the name, as well as `.pyi` files in `./scripts/lib/generator_hex` for API reference.

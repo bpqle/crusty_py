@@ -7,12 +7,6 @@ from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Opti
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class StateChange(_message.Message):
-    __slots__ = ["state"]
-    STATE_FIELD_NUMBER: _ClassVar[int]
-    state: _any_pb2.Any
-    def __init__(self, state: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
-
 class ComponentParams(_message.Message):
     __slots__ = ["parameters"]
     PARAMETERS_FIELD_NUMBER: _ClassVar[int]
@@ -25,20 +19,28 @@ class Config(_message.Message):
     identifier: str
     def __init__(self, identifier: _Optional[str] = ...) -> None: ...
 
-class Reply(_message.Message):
-    __slots__ = ["ok", "error", "params"]
-    OK_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    PARAMS_FIELD_NUMBER: _ClassVar[int]
-    ok: _empty_pb2.Empty
-    error: str
-    params: _any_pb2.Any
-    def __init__(self, ok: _Optional[_Union[_empty_pb2.Empty, _Mapping]] = ..., error: _Optional[str] = ..., params: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
-
 class Pub(_message.Message):
-    __slots__ = ["time", "state"]
-    TIME_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["state", "time"]
     STATE_FIELD_NUMBER: _ClassVar[int]
-    time: _timestamp_pb2.Timestamp
+    TIME_FIELD_NUMBER: _ClassVar[int]
     state: _any_pb2.Any
+    time: _timestamp_pb2.Timestamp
     def __init__(self, time: _Optional[_Union[_timestamp_pb2.Timestamp, _Mapping]] = ..., state: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
+
+class Reply(_message.Message):
+    __slots__ = ["error", "ok", "params", "state"]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    OK_FIELD_NUMBER: _ClassVar[int]
+    PARAMS_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    error: str
+    ok: _empty_pb2.Empty
+    params: _any_pb2.Any
+    state: _any_pb2.Any
+    def __init__(self, ok: _Optional[_Union[_empty_pb2.Empty, _Mapping]] = ..., error: _Optional[str] = ..., params: _Optional[_Union[_any_pb2.Any, _Mapping]] = ..., state: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
+
+class StateChange(_message.Message):
+    __slots__ = ["state"]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    state: _any_pb2.Any
+    def __init__(self, state: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...

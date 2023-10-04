@@ -77,8 +77,8 @@ async def await_response(stim_data):
     logger.state("Awaiting response")
     response = 'timeout'
     rtime = None
-    duration = decider.playback.duration
-    logger.state("Duration of stim is ", duration)
+    duration = decider.playback.stim_len
+    logger.state(f"Duration of stim is {duration[0] if type(duration)!=float else duration}")
 
     # Note that we technically do not NEED to set a timeout for the following scry()
     # In which case, calculations for stim duration need not be taken
@@ -86,9 +86,9 @@ async def await_response(stim_data):
     def resp_check(pub_msg):
         nonlocal response
         if ('playback' in pub_msg) and (not pub_msg['playback']):
-            return True # playback ended
-        elif ('peck_left' in pub_msg):
-            for k, v in key_state.items():
+            return True  # playback ended
+        elif 'peck_left' in pub_msg:
+            for k, v in pub_msg.items():
                 if (k in stim_data['responses']) and bool(v):
                     response = k
                     return True

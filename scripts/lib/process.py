@@ -130,6 +130,12 @@ class Morgoth:
         if int(interval_check['clock_interval']) != interval:
             logger.error(f"House-Light Clock Interval not set to {interval},"
                          f" got {interval_check['clock_interval']}")
+        logger.debug("Parameters Set & Checked for House-lights. Requesting Current State")
+        current_lights = await self.messenger.command(request_type="GetState",
+                                                      component='house-light',
+                                                      body={})
+        logger.debug(f"State Request Received, decoded: {current_lights}")
+        self.sun.update(current_lights)
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
         """
@@ -141,11 +147,12 @@ class Morgoth:
         :return:
         """
         self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
-        logger.state("Requesting stimuli directory change")
+        logger.state(f"Requesting stimuli directory change: {self.playback.dir}")
         await self.messenger.command(
             request_type="SetParameters",
             component='audio-playback',
-            body={'audio_dir': self.playback.dir}
+            body={'audio_dir': self.playback.dir},
+            timeout=-1
         )
         # GetParams only used here to acquire configured sample rate.
         # Can't get the new audio directory requested immediately since the import action on 
@@ -154,7 +161,6 @@ class Morgoth:
             request_type="GetParameters",
             component='audio-playback',
             body=None,
-            timeout=None
         )
         # if dir_check['audio_dir'] != self.playback.dir:
         #     logger.error(f"Auditory folder mismatch: got {dir_check['audio_dir']} expected {self.playback.dir}")
@@ -305,10 +311,9 @@ class Morgoth:
         ))
         await b
         _, _, pub, _ = await a
-
-        frame_count = pub['frame_count']
+        frame_count = int(pub['frame_count'])
         stim_duration = frame_count / self.playback.sample_rate
-        self.playback.duration = stim_duration
+        self.playback.stim_len = stim_duration
         if poll_end:
             await asyncio.create_task(self.scry(
                 'audio-playback',
@@ -366,7 +371,7 @@ class JukeBox:
         self.playlist = None
         self.dir = None
         self.cue_locations = None
-        self.duration = None
+        self.stim_len = 0
 
     @classmethod
     async def spawn(cls, cfg, shuffle=True, replace=False, get_cues=True):
@@ -376,7 +381,7 @@ class JukeBox:
             cf = json.load(file)
             self.dir = cf['stimulus_root']
             self.stim_data = cf['stimuli']
-
+        logger.state(f"Specified Stim Directory from Config: {self.dir}")
         self.cue_locations = {}
         playlist = np.empty(shape=0)
 

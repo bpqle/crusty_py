@@ -65,6 +65,15 @@ class Sauron:
                                         preserving_proto_field_name=True)
                 logger.dispatch(f" Response {request_type} - {component} params parsed")
                 return decoded
+            elif result == 'state':
+                any_state = rep_template.state
+                part = Component('state', component)
+                state = await part.from_any(any_state)
+                decoded = MessageToDict(state,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
+                logger.dispatch(f" {request_type} - {component} Response State parsed")
+                return decoded
         else:  # timeout awaiting response
             logger.error(f"{request_type} - {component}"
                          f" Timed out after {TIMEOUT}ms awaiting response from decide-rs")
@@ -143,10 +152,11 @@ class Request:
 
 class RequestType(Enum):
     ChangeState = 0x00
-    ResetState = 0x01
-    SetParameters = 0x02
-    GetParameters = 0x12
-    ComponentShutdown = 0x13
+    GetState = 0x01
+    ResetState = 0x02
+    SetParameters = 0x10
+    GetParameters = 0x11
+    ComponentShutdown = 0x12
     RequestLock = 0x20
     ReleaseLock = 0x21
     Shutdown = 0x22
