@@ -241,8 +241,11 @@ class Morgoth:
                 *_topic, msg = await self.messenger.lighter.recv_multipart()
                 logger.state("House-light Message Received")
                 await asyncio.sleep(0.01)
-                proto_comp = Component("state","house-light")
-                _tstamp, decoded = await proto_comp.from_pub(msg)
+                proto_comp = Component("state", "house-light")
+                _tstamp, state_msg = await proto_comp.from_pub(msg)
+                decoded = MessageToDict(state_msg,
+                                        including_default_value_fields=True,
+                                        preserving_proto_field_name=True)
                 self.sun.update(decoded)
                 logger.state("House-light state updated")
         except asyncio.CancelledError:
