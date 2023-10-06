@@ -136,6 +136,8 @@ class Morgoth:
                                                       body={})
         logger.debug(f"State Request Received, decoded: {current_lights}")
         self.sun.update(current_lights)
+        asyncio.create_task(self._light_cycle())
+        return
 
     async def init_playback(self, cfg, shuffle=True, replace=False, get_cues=True):
         """
@@ -229,19 +231,20 @@ class Morgoth:
         for pos in ['peck-leds-left', 'peck-leds-right', 'peck-leds-center']:
             await self.cue(pos, 'off')
 
-    async def light_cycle(self):
+    async def _light_cycle(self):
         """
         This function will await messages regarding light cycle update
         Should be run within a create_task() or gather() and not blocking-awaited
         """
-        timeout = self.sun.interval + 10  # give an extra 10 seconds
         try:
             while True:
-                decoded = await asyncio.wait_for(self.messenger.light_q.get(), timeout=timeout)  # timeout in seconds
+                *_topic, msg = await self.messenger.lighter.recv_multipart()
+                logger.state("House-light Message Received")
+                await asyncio.sleep(0.01)
+                proto_comp = Component("state","house-light")
+                _tstamp, decoded = await proto_comp.from_pub(msg)
                 self.sun.update(decoded)
                 logger.state("House-light state updated")
-        except asyncio.TimeoutError:
-            raise state_err(f"No house light updates received in {timeout}s. Decide-rs may be down")
         except asyncio.CancelledError:
             logger.warning("Light Cycle has been cancelled due to another task's failure.")
 

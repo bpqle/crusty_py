@@ -52,14 +52,12 @@ async def main():
     try:
         if args.feed:
             await asyncio.gather(
-                decider.messenger.eye(), decider.light_cycle(), feed(),
+                decider.messenger.eye(),
+                feed(),
                 return_exceptions=False
             )
         else:
-            await asyncio.gather(
-                decider.messenger.eye(), decider.light_cycle(),
-                return_exceptions=False
-            )
+            await decider.messenger.eye()
     except Exception as error:
         import traceback
         logger.error(f"Error encountered: {error}")

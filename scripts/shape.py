@@ -68,7 +68,8 @@ async def main():
 
     try:
         await asyncio.gather(
-            decider.messenger.eye(), decider.light_cycle(), experiment_loop(),
+            decider.messenger.eye(),
+            experiment_loop(),
             return_exceptions=False
         )
     except Exception as error:

@@ -15,15 +15,15 @@ async def contact_host():
         try:
             async with session.get(url=f"{HIVEMIND}/info/") as result:
                 logger.dispatch("Response received from Decide-Host")
-                reply = await result.json()
-                if result.status != 200:
-                    logger.error('GET Result Error from getting Decide-Host info:', reply)
+                reply = await result.text()
+                if not result.ok:
+                    logger.error(f'Error {result.status} from getting Decide-Host info:', reply)
                 elif ('api_version' not in reply) or (reply['api_version'] is None):
                     logger.error('Unexpected reply from Decide-Host info:', reply)
                 else:
                     logger.dispatch("Connected to Decide-Host.")
         except aiohttp.ClientConnectionError as e:
-            logger.error('Could not contact Decide-Host:', str(e))
+            logger.error('Could not contact Decide-Host. Is it running?', str(e))
     else:
         logger.warning('Standalone Mode specified in config. Trials will not be logged')
 
@@ -49,32 +49,37 @@ async def post_host(msg: dict, target):
                                     json=msg,
                                     headers={'Content-Type': 'application/json'}
                                     ) as result:
-                if result.status != 201:
-                    try:
-                        reply = await result.json(content_type=None)
-                    except json.decoder.JSONDecodeError as e:
-                        logger.error(f"JSON Decode Error from parsing HOST response {result.status}: {result}")
-                    with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
-                        json.dump(msg, file)
-                        f.write(os.linesep)
+                if not result.ok:
+                    reply = await result.text()
+                    logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
+                    log_dropped(target, msg)
                 else:
                     logger.dispatch("Data logged to DecideAPI.")
-                    await post_dropped()
+                    await post_dropped(target)
         except aiohttp.ClientConnectionError as e:
             logger.error('Could not contact Decide-Host:', str(e))
-            with open(f'/root/py_crust/dropped_{target}.json', 'a') as file:
-                json.dump(msg, file)
-                file.write(os.linesep)
+            log_dropped(target, msg)
 
 
-async def post_dropped():
+def log_dropped(target, msg):
     try:
-        with open(f'/root/py_crust/dropped_trials.json', 'rb') as file:
-            if file.read(2) != '[]':
-                things = json.load(file)
-                for data in things:
-                    await post_host(data, 'trials')
-                os.remove(f'dropped_trials.log')
+        with open(f'/root/py_crust/dropped_{target}.json', 'r+') as file:
+            current_dropped = json.load(file)
+    except json.decoder.JSONDecodeError as e:  # empty file
+        logger.debug(f"Dropped_{target} JSON Storage Does not exist yet. Creating file.")
+        current_dropped = []
+    current_dropped.append(msg)
+    with open(f'/root/py_crust/dropped_{target}.json', 'w+') as file:
+        json.dump(current_dropped, file, indent=4, separators=(',', ': '))
+
+
+async def post_dropped(target):
+    try:
+        with open(f'/root/py_crust/dropped_{target}.json', 'r') as file:
+            data = json.load(file)
+            for d in data:
+                await post_host(d, target)
+        os.remove(f'/root/py_crust/dropped_{target}.json')
     except FileNotFoundError:
         return
 

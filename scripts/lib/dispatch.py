@@ -16,21 +16,21 @@ class Sauron:
         self.collector = context.socket(zmq.SUB)
         self.collector.connect(PUB_ENDPOINT)
         self.collector.subscribe(b"")
-        # Scryer doesn't subscribe to anything until told so
+        # SUB sockets aren't meant to dynamically subscribe/unsubscribe
+        # Therefore the scryer SUB socket must receive all messages first
         self.scryer = context.socket(zmq.SUB)
         self.scryer.connect(PUB_ENDPOINT)
         self.scryer.subscribe(b"")
+        # House-Light only updates
+        self.lighter = context.socket(zmq.SUB)
+        self.lighter.connect(PUB_ENDPOINT)
+        self.lighter.subscribe(b"state/house-light")
         # REQ socket
         self.caller = context.socket(zmq.REQ)
         self.caller.connect(REQ_ENDPOINT)
         # Monitor both REQ and PUB enpoints
         self.ping = self.caller.get_monitor_socket()
         self.pong = self.collector.get_monitor_socket()
-
-        # Light queue is set up to lazily process house-light update
-        # TODO: Can eventually be worked out of the script.
-        self.light_q = asyncio.Queue()
-        logger.dispatch("REQ and PUB sockets created.")
 
     async def command(self, request_type: str, component: str, body=None, timeout=TIMEOUT):
         req = await Request.spawn(request_type, component, body)
@@ -103,9 +103,6 @@ class Sauron:
             }
             logger.dispatch(f"Monitor decoded message from {comp}: {decoded}")
             await post_host(msg, target='events')
-            # add to light queue
-            if comp == 'house-light':
-                await self.light_q.put(decoded)
 
     async def _bee_gee(self):
         from zmq.utils.monitor import recv_monitor_message
