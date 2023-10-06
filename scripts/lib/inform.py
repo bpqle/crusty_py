@@ -78,7 +78,18 @@ async def post_dropped(target):
         with open(f'/root/py_crust/dropped_{target}.json', 'r') as file:
             data = json.load(file)
             for d in data:
-                await post_host(d, target)
+                try:
+                    async with session.post(url=f"{HIVEMIND}/{target}/",
+                                            json=d,
+                                            headers={'Content-Type': 'application/json'}
+                                            ) as result:
+                        if not result.ok:
+                            reply = await result.text()
+                            logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
+                        else:
+                            logger.dispatch("Data logged to DecideAPI.")
+                except aiohttp.ClientConnectionError as e:
+                    logger.error('Could not contact Decide-Host:', str(e))
         os.remove(f'/root/py_crust/dropped_{target}.json')
     except FileNotFoundError:
         return
