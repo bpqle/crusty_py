@@ -15,7 +15,7 @@ async def contact_host():
         try:
             async with session.get(url=f"{HIVEMIND}/info/") as result:
                 logger.dispatch("Response received from Decide-Host")
-                reply = await result.text()
+                reply = await result.json()
                 if not result.ok:
                     logger.error(f'Error {result.status} from getting Decide-Host info:', reply)
                 elif ('api_version' not in reply) or (reply['api_version'] is None):
