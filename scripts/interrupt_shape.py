@@ -8,7 +8,6 @@ from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
 
-
 __name__ = 'interrupt-shape'
 
 p = argparse.ArgumentParser()
@@ -27,6 +26,7 @@ p.add_argument("--feed_duration", help="default feeding duration for correct res
 p.add_argument("--response_duration", help="response window duration (in ms) in block 1",
                action='store', default=6000)
 p.add_argument('--log_level', default='INFO')
+p.add_argument('--no_notify', action='store_true')
 args = p.parse_args()
 
 state = {
@@ -42,7 +42,7 @@ params = {
     'cue_color': args.color,
     'block_length': int(args.trials),
     'init_position': args.init_position,
-    'feed_delay': int(args.feed_delay)/1000,
+    'feed_delay': int(args.feed_delay) / 1000,
     'feed_duration': int(args.feed_duration),
     'iti_min': 240  # with some variance
 }
@@ -60,7 +60,8 @@ async def main():
     await decider.set_feeder(duration=params['feed_duration'])
 
     logger.info(f"{__name__} initiated")
-    slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
+    if not args.no_notify:
+        slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
 
     try:
         await asyncio.gather(
@@ -72,7 +73,8 @@ async def main():
         import traceback
         logger.error(f"Error encountered: {error}")
         print(traceback.format_exc())
-        slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
 
 
@@ -254,8 +256,9 @@ async def block3_auton():
         await asyncio.sleep(iti)
 
         if state['trial'] == params['block_length']:
-            slack(f"Interrupt Shape completed for {state['subject']}. Trials will continue running",
-                        usr=params['user'])
+            if not args.no_notify:
+                slack(f"Interrupt Shape completed for {state['subject']}. Trials will continue running",
+                      usr=params['user'])
             logger.info('Shape completed')
     else:
         raise Exception("Block 3 passed without any response!")
@@ -266,6 +269,6 @@ if __name__ == 'interrupt-shape':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
-        slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
-

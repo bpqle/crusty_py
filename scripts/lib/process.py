@@ -381,7 +381,7 @@ class JukeBox:
 
     @classmethod
     async def spawn(cls, cfg, shuffle=True, replace=False, get_cues=True):
-        logger.info("Spawning Playback Machine")
+        logger.info("Initiating Playback Machine")
         self = JukeBox()
         with open(cfg) as file:
             cf = json.load(file)
@@ -399,7 +399,7 @@ class JukeBox:
                         (consq['p_punish'] if 'p_punish' in consq else 0)
                 if total > 1:
                     logger.error(f"Reward/Punish Percentage Exceed 1.0 for {action} in {stim['name']}")
-                    raise
+                    raise ValueError(f"Reward/Punish Percentage Exceed 1.0 for {action} in {stim['name']}")
                 if get_cues and ('p_reward' in consq):
                     cue_loc = peck_parse(action, 'l')
             if get_cues:
@@ -408,7 +408,7 @@ class JukeBox:
             playlist = np.append(playlist, added)
 
         assert (playlist.ndim == 1)
-        logger.info(f"Playlist {playlist}")
+        logger.info(f"Playlist of {np.unique(playlist)} stimuli with {len(playlist)} plays")
         self.playlist = playlist
         if shuffle:
             np.random.shuffle(self.playlist)
@@ -437,7 +437,7 @@ class JukeBox:
     def current_cue(self):
         if self.stimulus is None:
             logger.error("Trying to determine cue but no stimulus specified. Try initiating playlist first")
-            raise
+            raise ValueError("Trying to determine cue but no stimulus specified. Try initiating playlist first")
         return self.cue_locations[self.stimulus]
 
 

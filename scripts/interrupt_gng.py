@@ -25,6 +25,7 @@ p.add_argument('--feed_delay', help='time (in ms) to wait between response and f
 p.add_argument('--init_position', help='key position to initiate trial',
                choices=['left', 'center', 'right'], default='center')
 p.add_argument('--log_level', default='INFO')
+p.add_argument('--no_notify', action='store_true')
 args = p.parse_args()
 
 state = {
@@ -155,7 +156,8 @@ async def main():
     await decider.init_playback(args.config, replace=args.replace)
 
     logger.info(f"{__name__} initiated")
-    slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
+    if not args.no_notify:
+        slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
 
     try:
         await asyncio.gather(
@@ -167,7 +169,8 @@ async def main():
         import traceback
         logger.error(f"Error encountered: {error}")
         print(traceback.format_exc())
-        slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
 
 
@@ -176,6 +179,7 @@ if __name__ == "interrupt-gng":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
-        slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
 

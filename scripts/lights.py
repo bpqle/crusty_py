@@ -17,10 +17,11 @@ p.add_argument("user")
 p.add_argument("--feed", help="run food motor at defined interval",
                action='store_true')
 p.add_argument("--feed_interval", help="interval between feeding (in ms)",
-               action='store', type=int, default=30000)
+               action='store', type=int, default=300000)
 p.add_argument("--feed_duration", help="default feeding duration (in ms)",
                action='store', type=int, default=4000)
 p.add_argument('--log_level', default='INFO')
+p.add_argument('--no_notify', action='store_true')
 args = p.parse_args()
 
 lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
@@ -47,7 +48,8 @@ async def main():
     await decider.set_light()
 
     logging.info("Lights.py initiated")
-    slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
+    if not args.no_notify:
+        slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
 
     try:
         if args.feed:
@@ -62,7 +64,8 @@ async def main():
         import traceback
         logger.error(f"Error encountered: {error}")
         print(traceback.format_exc())
-        slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client encountered an error and will shut down.", usr=args.user)
         sys.exit("Error Detected, shutting down.")
 
 
@@ -71,7 +74,8 @@ if __name__ == "lights":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.warning("Keyboard Interrupt Detected, shutting down.")
-        slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
+        if not args.no_notify:
+            slack(f"{IDENTITY} {__name__} client was manually shut down.", usr=args.user)
         sys.exit("Keyboard Interrupt Detected, shutting down.")
 
 
