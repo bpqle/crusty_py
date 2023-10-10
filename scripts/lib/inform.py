@@ -65,7 +65,7 @@ def log_dropped(target, msg):
     try:
         with open(f'/root/py_crust/dropped_{target}.json', 'r+') as file:
             current_dropped = json.load(file)
-    except json.decoder.JSONDecodeError as e:  # empty file
+    except FileNotFoundError as e:  # empty file
         logger.debug(f"Dropped_{target} JSON Storage Does not exist yet. Creating file.")
         current_dropped = []
     current_dropped.append(msg)
