@@ -20,7 +20,7 @@ async def contact_host():
                     logger.error(f'Error {result.status} from getting Decide-Host info:', reply)
                 else:
                     reply = await result.json()
-                    elif ('api_version' not in reply) or (reply['api_version'] is None):
+                    if ('api_version' not in reply) or (reply['api_version'] is None):
                         logger.error('Unexpected reply from Decide-Host info:', reply)
                     else:
                         logger.dispatch("Connected to Decide-Host.")
