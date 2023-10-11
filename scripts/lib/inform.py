@@ -15,13 +15,15 @@ async def contact_host():
         try:
             async with session.get(url=f"{HIVEMIND}/info/") as result:
                 logger.dispatch("Response received from Decide-Host")
-                reply = await result.json()
                 if not result.ok:
+		    reply = await result.text()
                     logger.error(f'Error {result.status} from getting Decide-Host info:', reply)
-                elif ('api_version' not in reply) or (reply['api_version'] is None):
-                    logger.error('Unexpected reply from Decide-Host info:', reply)
                 else:
-                    logger.dispatch("Connected to Decide-Host.")
+                    reply = await result.json()
+                    elif ('api_version' not in reply) or (reply['api_version'] is None):
+                        logger.error('Unexpected reply from Decide-Host info:', reply)
+                    else:
+                        logger.dispatch("Connected to Decide-Host.")
         except aiohttp.ClientConnectionError as e:
             logger.error('Could not contact Decide-Host. Is it running?', str(e))
     else:
@@ -51,8 +53,8 @@ async def post_host(msg: dict, target):
                                     ) as result:
                 if not result.ok:
                     reply = await result.text()
-                    logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
                     log_dropped(target, msg)
+                    logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
                 else:
                     logger.dispatch("Data logged to DecideAPI.")
                     await post_dropped(target)
@@ -83,9 +85,12 @@ async def post_dropped(target):
                                             json=d,
                                             headers={'Content-Type': 'application/json'}
                                             ) as result:
-                        if not result.ok:
+                        if result.status == 400:
+                            continue # data already logged or conflicted
+                        elif not result.ok:
                             reply = await result.text()
                             logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
+                            return
                         else:
                             logger.dispatch("Data logged to DecideAPI.")
                 except aiohttp.ClientConnectionError as e:
