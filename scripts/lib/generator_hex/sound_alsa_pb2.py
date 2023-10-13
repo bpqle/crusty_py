@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10sound_alsa.proto\"B\n\x07SaState\x12\x10\n\x08\x61udio_id\x18\x01 \x01(\t\x12\x10\n\x08playback\x18\x02 \x01(\x08\x12\x13\n\x0b\x66rame_count\x18\x03 \x01(\r\"G\n\x08SaParams\x12\x11\n\taudio_dir\x18\x01 \x01(\t\x12\x13\n\x0b\x61udio_count\x18\x02 \x01(\r\x12\x13\n\x0bsample_rate\x18\x03 \x01(\rb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10sound_alsa.proto\"B\n\x07SaState\x12\x10\n\x08\x61udio_id\x18\x01 \x01(\t\x12\x10\n\x08playback\x18\x02 \x01(\x08\x12\x13\n\x0b\x66rame_count\x18\x03 \x01(\r\"G\n\x08SaParams\x12\x11\n\tconf_path\x18\x01 \x01(\t\x12\x13\n\x0b\x61udio_count\x18\x02 \x01(\r\x12\x13\n\x0bsample_rate\x18\x03 \x01(\rb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'sound_alsa_pb2', globals())

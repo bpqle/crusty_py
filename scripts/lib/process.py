@@ -148,24 +148,21 @@ class Morgoth:
         :param get_cues: bool, defaults to True, infer correct corresponding LED cue light.
         :return:
         """
-        self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
-        logger.state(f"Requesting stimuli directory change: {self.playback.dir}")
-        await self.messenger.command(
+        logger.state(f"Requesting Experiment Config Parse: {cfg}")
+        start_task = asyncio.create_task(self.messenger.command(
             request_type="SetParameters",
             component='audio-playback',
-            body={'audio_dir': self.playback.dir},
+            body={'conf_path': cfg},
             timeout=-1
-        )
-        # GetParams only used here to acquire configured sample rate.
-        # Can't get the new audio directory requested immediately since the import action on 
-        # decide-core is non-blocking. We won't know when it's completed
+        ))
+        self.playback = await JukeBox.spawn(cfg, shuffle, replace, get_cues)
+        await start_task
+
         dir_check = await self.messenger.command(
             request_type="GetParameters",
             component='audio-playback',
             body=None,
         )
-        # if dir_check['audio_dir'] != self.playback.dir:
-        #     logger.error(f"Auditory folder mismatch: got {dir_check['audio_dir']} expected {self.playback.dir}")
 
         self.playback.sample_rate = dir_check['sample_rate']
         logger.state(f"Got sampling rate {dir_check['sample_rate']}")

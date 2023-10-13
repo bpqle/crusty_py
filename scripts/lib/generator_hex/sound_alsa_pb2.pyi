@@ -5,14 +5,14 @@ from typing import ClassVar as _ClassVar, Optional as _Optional
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class SaParams(_message.Message):
-    __slots__ = ["audio_count", "audio_dir", "sample_rate"]
+    __slots__ = ["audio_count", "conf_path", "sample_rate"]
     AUDIO_COUNT_FIELD_NUMBER: _ClassVar[int]
-    AUDIO_DIR_FIELD_NUMBER: _ClassVar[int]
+    CONF_PATH_FIELD_NUMBER: _ClassVar[int]
     SAMPLE_RATE_FIELD_NUMBER: _ClassVar[int]
     audio_count: int
-    audio_dir: str
+    conf_path: str
     sample_rate: int
-    def __init__(self, audio_dir: _Optional[str] = ..., audio_count: _Optional[int] = ..., sample_rate: _Optional[int] = ...) -> None: ...
+    def __init__(self, conf_path: _Optional[str] = ..., audio_count: _Optional[int] = ..., sample_rate: _Optional[int] = ...) -> None: ...
 
 class SaState(_message.Message):
     __slots__ = ["audio_id", "frame_count", "playback"]
