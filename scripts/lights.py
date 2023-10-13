@@ -47,9 +47,9 @@ async def main():
     # House-lights
     await decider.set_light()
 
-    logging.info("Lights.py initiated")
+    logging.info("Lights.py is initiated")
     if not args.no_notify:
-        slack(f"lights.py initiated on {IDENTITY}", usr=args.user)
+        slack(f"lights.py was initiated on {IDENTITY}", usr=args.user)
 
     try:
         if args.feed:

@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 from .config import *
 logger = logging.getLogger('main')
 
@@ -39,6 +40,7 @@ def lincoln(log, level='DEBUG'):
     streamer.setFormatter(CustomFormatter())
     logger.addHandler(streamer)
     if LOCAL_LOG:
+        Path("/root/py_crust/log").mkdir(parents=True, exist_ok=True)
         filer = logging.FileHandler(f"/root/py_crust/log/{log}", mode='w')
         filer.setFormatter(logging.Formatter())
         logger.addHandler(filer)

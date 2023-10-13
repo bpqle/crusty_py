@@ -59,7 +59,7 @@ async def main():
     await decider.set_light()
     await decider.set_feeder(duration=params['feed_duration'])
 
-    logger.info(f"{__name__} initiated")
+    logger.info(f"{__name__} is initiated")
     if not args.no_notify:
         slack(f"{__name__} was initiated on {IDENTITY}", usr=args.user)
 

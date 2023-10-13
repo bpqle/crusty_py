@@ -55,7 +55,7 @@ class Sauron:
             if result == 'ok':
                 return
             elif result == 'error':
-                logger.error(f"Reply error from decide-rs: {rep_template.result}")
+                logger.error(f"Reply error from decide-rs: {rep_template.error}")
             elif result == 'params':  # decode params
                 any_params = rep_template.params
                 part = Component('param', component)

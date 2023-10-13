@@ -408,7 +408,7 @@ class JukeBox:
             playlist = np.append(playlist, added)
 
         assert (playlist.ndim == 1)
-        logger.info(f"Playlist of {np.unique(playlist)} stimuli with {len(playlist)} plays")
+        logger.info(f"Playlist of {len(np.unique(playlist))} stimuli with {len(playlist)} plays")
         self.playlist = playlist
         if shuffle:
             np.random.shuffle(self.playlist)
