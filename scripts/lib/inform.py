@@ -52,9 +52,8 @@ async def post_host(msg: dict, target):
                                     headers={'Content-Type': 'application/json'}
                                     ) as result:
                 if not result.ok:
-                    reply = await result.text()
                     log_dropped(target, msg)
-                    logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
+                    logger.error(f'Error {result.status} from submitting data to Decide-Host')
                 else:
                     logger.dispatch("Data logged to DecideAPI.")
                     await post_dropped(target)
@@ -88,8 +87,7 @@ async def post_dropped(target):
                         if result.status == 400:
                             continue # data already logged or conflicted
                         elif not result.ok:
-                            reply = await result.text()
-                            logger.error(f'Error {result.status} from submitting data to Decide-Host:', reply)
+                            logger.error(f'Error {result.status} from submitting data to Decide-Host:')
                             return
                         else:
                             logger.dispatch("Data logged to DecideAPI.")
