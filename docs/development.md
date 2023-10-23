@@ -1,7 +1,5 @@
 ## DEVELOPMENT SIDE
 
-Let it first be understood that the developer of this package does not take pleasure in using `poetry`, `protocol-buffer`, `python`, asynchronous `python`, or programming in general.
-
 `pyproject.toml` will provide information on which specific python version and module versions that needs to be used for beagle-bone development. 
 At the time of writing, the `python` version on the beagle-bone Debian 11 image is at `3.9.2`, which will be older than most up-to-date development machines.
 
