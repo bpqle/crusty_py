@@ -7,7 +7,7 @@ import random
 from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
-
+from lib.report import make_response, set_server
 __name__ = 'interrupt-shape'
 
 p = argparse.ArgumentParser()
@@ -66,6 +66,7 @@ async def main():
     try:
         await asyncio.gather(
             decider.messenger.eye(),
+            set_server(snd_resp=make_response({'state': state, 'params': params})),
             experiment_loop(),
             return_exceptions=False
         )

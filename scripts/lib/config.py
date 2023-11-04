@@ -15,6 +15,7 @@ TIMEOUT = config['TIMEOUT']
 SLACK_HOOK = config['SLACK_HOOK']
 LOCAL_LOG = config['LOCAL_LOG']
 CONTACT_HOST = config['CONTACT_HOST']
+PORT_CTRL = config['PORT_CTRL']
 HIVEMIND = config['HOST_ADDR']
 IDENTITY = os.uname()[1]
 HOST_LOG = None

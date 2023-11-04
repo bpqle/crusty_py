@@ -108,7 +108,8 @@ def slack(msg, usr=None):
         with requests.post(
             SLACK_HOOK,
             json=slack_message,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json'},
+            timeout=0.2
         ) as response:
             logger.info(f"Slacked {usr}, response: {response.content}")
     except Exception as e:
