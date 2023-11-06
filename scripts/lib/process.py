@@ -178,7 +178,7 @@ class Morgoth:
         b = asyncio.create_task(self.messenger.command(
             request_type="ChangeState",
             component='stepper-motor',
-            body={'running': True, 'direction': True}
+            body={'running': True, 'direction': False}
         ))
         a = asyncio.create_task(self.scry(
             'stepper-motor',
