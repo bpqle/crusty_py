@@ -7,13 +7,15 @@ import random
 from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
-from lib.report import make_response, set_server
+from lib.report import set_server
 __name__ = 'interrupt-shape'
 
 p = argparse.ArgumentParser()
 p.add_argument("birdID")
 p.add_argument("user")
 p.add_argument("-B", "--block", help="skip to specific block", action='store', default=0)
+p.add_argument("--B1_slow", help="increase iti, trial count, and feed-duration for block 1",
+               action='store_true')
 p.add_argument("--color", help="set color of cues",
                choices=['blue', 'red', 'green'], default='blue')
 p.add_argument('--init_position', help='key position to initiate trial',
@@ -38,6 +40,7 @@ state = {
 params = {
     'user': args.user,
     'active': True,
+    'B1_slow': args.B1_slow,
     'response_duration': args.response_duration,
     'cue_color': args.color,
     'block_length': int(args.trials),
@@ -66,7 +69,7 @@ async def main():
     try:
         await asyncio.gather(
             decider.messenger.eye(),
-            set_server(snd_resp=make_response({'state': state, 'params': params})),
+            set_server(variables={'state': state, 'params': params}),
             experiment_loop(),
             return_exceptions=False
         )
@@ -124,14 +127,22 @@ async def block0_feeder():
 
 
 async def block1_patience():
-    iti_var = 60
+    if params['B1_slow']:
+        iti_var = 60
+        feed_duration = params['feed_duration']
+        trials = 100
+    else:
+        iti_var = 30
+        feed_duration = 1000
+        trials = 1400
+
     await_input = peck_parse(params['init_position'], 'r')
     cue_pos = peck_parse(params['init_position'], 'l')
 
     iti = int(random.random() * iti_var)
 
     if state['trial'] == 0:
-        await decider.set_feeder(1000)
+        await decider.set_feeder(feed_duration)
         logger.info(f"Entering block {state['block']}")
 
     await decider.cue(cue_pos, params['cue_color'])
@@ -170,7 +181,7 @@ async def block1_patience():
     await post_host(msg=state.copy(), target='trials')
     await asyncio.sleep(iti)
 
-    if responded or (state['trial'] + 1 > params['block_length']):
+    if responded or (state['trial'] + 1 > trials):
         state.update({
             'trial': 0,
             'block': state.get('block', 0) + 1,

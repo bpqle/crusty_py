@@ -7,7 +7,7 @@ import random
 from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
-from lib.report import set_server, make_response
+from lib.report import set_server
 
 __name__ = 'lights'
 
@@ -55,7 +55,7 @@ async def main():
         if args.feed:
             await asyncio.gather(
                 decider.messenger.eye(),
-                set_server(make_response(info=None)),
+                set_server(variables=None),
                 feed(),
                 return_exceptions=False
             )
