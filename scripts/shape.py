@@ -7,7 +7,7 @@ import random
 from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
-
+from lib.report import set_server, make_response
 
 __name__ = 'shape'
 
@@ -71,6 +71,7 @@ async def main():
     try:
         await asyncio.gather(
             decider.messenger.eye(),
+            set_server(snd_resp=make_response({'state': state, 'params': params})),
             experiment_loop(),
             return_exceptions=False
         )

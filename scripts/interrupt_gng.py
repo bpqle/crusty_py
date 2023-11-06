@@ -1,13 +1,13 @@
 #!/usr/bin/python3
 import sys
-import argparse
+import random
 import asyncio
 import logging
-import random
+import argparse
 from lib.logging import lincoln
 from lib.process import *
 from lib.dispatch import *
-
+from lib.report import make_response, set_server
 
 __name__ = 'interrupt-gng'
 
@@ -162,6 +162,7 @@ async def main():
     try:
         await asyncio.gather(
             decider.messenger.eye(),
+            set_server(snd_resp=make_response({'state': state, 'params': params})),
             experiment_loop(),
             return_exceptions=False
         )

@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 import sys
-import argparse
-import asyncio
-import logging
 import random
-from lib.logging import lincoln
-from lib.process import *
-from lib.dispatch import *
+import logging
+import argparse
 import numpy as np
-
+from lib.dispatch import *
+from lib.process import *
+from lib.logging import lincoln
+from lib.report import make_response, set_server
 __name__ = 'gng'
 
 p = argparse.ArgumentParser()
@@ -64,7 +63,6 @@ params = {
     'min_iti': 100,
     'init_key': args.init_position,
 }
-
 lincoln(log=f"{args.birdID}_{__name__}.log", level=args.log_level)
 logger = logging.getLogger('main')
 
@@ -196,6 +194,7 @@ async def main():
     try:
         await asyncio.gather(
             decider.messenger.eye(),
+            set_server(snd_resp=make_response({'state': state, 'params': params})),
             experiment_loop(),
             return_exceptions=False
         )
