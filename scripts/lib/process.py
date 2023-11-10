@@ -169,7 +169,7 @@ class Morgoth:
 
     async def feed(self, delay=0):
         """
-        Automcatically run food motor and await end
+        Automatically run food motor and await end
         :param delay: duration (ms) to wait before running motor
         :return:
         """

@@ -26,14 +26,23 @@ async def set_server(snd_resp=make_response, variables=None):
     :return:
     """
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('', PORT_CTRL))
+    try:
+        server.bind(('', PORT_CTRL))
+    except OSError:
+        raise OSError("Port Ctrl Address Already in Use. Check for other running scripts.")
     server.listen(1)
     server.setblocking(False)
     loop = asyncio.get_running_loop()
-    while True:
-        client, address = await loop.sock_accept(server)
-        logger.info("New Client Connected.")
-        await handle_and_respond(client, address, snd_resp, variables, loop)
+    logger.info("Reporter Server up and awaiting client connection.")
+    try:
+        while True:
+            client, address = await loop.sock_accept(server)
+            logger.info("New Client Connected.")
+            await handle_and_respond(client, address, snd_resp, variables, loop)
+    except asyncio.CancelledError:
+        socket.shutdown(socket.SHUT_RDWR)
+        logger.warning("Reporter Server has been cancelled due to another task's failure."
+                       "Closing server socket")
 
 
 async def handle_and_respond(client, address, snd_rsp, variables, loop):

@@ -128,18 +128,18 @@ async def block0_feeder():
 
 async def block1_patience():
     if params['B1_slow']:
-        iti_var = 60
+        iti_var = 120
         feed_duration = params['feed_duration']
-        trials = 100
+        trials = 200
+        iti = 240 + int(random.random() * iti_var)
     else:
         iti_var = 30
-        feed_duration = 1000
+        feed_duration = 800
         trials = 1400
+        iti = int(random.random() * iti_var)
 
     await_input = peck_parse(params['init_position'], 'r')
     cue_pos = peck_parse(params['init_position'], 'l')
-
-    iti = int(random.random() * iti_var)
 
     if state['trial'] == 0:
         await decider.set_feeder(feed_duration)
@@ -189,7 +189,7 @@ async def block1_patience():
 
 
 async def block2_peck():
-    iti_var = 15
+    iti_var = 10
     iti = int(random.random() * iti_var)
 
     await_input = peck_parse(params['init_position'], 'r')
@@ -235,7 +235,7 @@ async def block2_peck():
 
 
 async def block3_auton():
-    iti_var = 15
+    iti_var = 5
     iti = int(random.random() * iti_var)
 
     await_input = peck_parse(params['init_position'], 'r')
